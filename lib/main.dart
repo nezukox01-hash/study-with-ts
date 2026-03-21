@@ -193,7 +193,7 @@ class HomeScreen extends StatelessWidget {
             mainAxisSpacing: 14,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.08,
+            childAspectRatio: 1.02,
             children: [
               HomeFeatureCard(
                 title: 'Reminder',
@@ -332,21 +332,32 @@ class HomeFeatureCard extends StatelessWidget {
                   ),
                   child: Icon(icon, color: Colors.white),
                 ),
-                const Spacer(),
+                const SizedBox(height: 14),
                 Text(
                   title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.text,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
+                    height: 1.15,
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 13,
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 13,
+                        height: 1.2,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -651,7 +662,7 @@ class TimerScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Row(
+                const Row(
                   children: [
                     Expanded(
                       child: AppButton(
@@ -938,12 +949,15 @@ class DetailPage extends StatelessWidget {
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.arrow_back_ios_new_rounded),
                   ),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.text,
+                  Expanded(
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.text,
+                      ),
                     ),
                   ),
                 ],
