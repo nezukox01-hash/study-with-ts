@@ -25,7 +25,6 @@ jobs:
         run: |
           rm -rf temp_app/lib
           cp -r lib temp_app/
-
           cp pubspec.yaml temp_app/pubspec.yaml
 
       - name: Install dependencies
