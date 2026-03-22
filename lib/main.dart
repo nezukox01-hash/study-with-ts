@@ -12,10 +12,18 @@ class StudyWithTSApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Study with TS',
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: TextScaler.noScaling,
+          ),
+          child: child!,
+        );
+      },
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF071120),
-        fontFamily: 'Roboto',
         useMaterial3: true,
       ),
       home: const MainScreen(),
@@ -128,6 +136,7 @@ class AppPage extends StatelessWidget {
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
                         color: AppColors.text,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
@@ -176,6 +185,7 @@ class HomeScreen extends StatelessWidget {
                     color: AppColors.text,
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
+                    decoration: TextDecoration.none,
                   ),
                 ),
                 SizedBox(height: 8),
@@ -184,6 +194,7 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.muted,
                     fontSize: 14,
+                    decoration: TextDecoration.none,
                   ),
                 ),
               ],
@@ -255,6 +266,7 @@ class HomeScreen extends StatelessWidget {
                     color: AppColors.text,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
                   ),
                 ),
                 SizedBox(height: 14),
@@ -345,6 +357,7 @@ class HomeFeatureCard extends StatelessWidget {
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     height: 1.15,
+                    decoration: TextDecoration.none,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -359,6 +372,7 @@ class HomeFeatureCard extends StatelessWidget {
                         color: AppColors.muted,
                         fontSize: 13,
                         height: 1.2,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
@@ -482,6 +496,7 @@ class ReminderMenuCard extends StatelessWidget {
                           color: AppColors.text,
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -490,6 +505,7 @@ class ReminderMenuCard extends StatelessWidget {
                         style: const TextStyle(
                           color: AppColors.muted,
                           fontSize: 13,
+                          decoration: TextDecoration.none,
                         ),
                       ),
                     ],
@@ -661,24 +677,42 @@ class TimerScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '25:00',
-                          style: TextStyle(
-                            color: AppColors.text,
-                            fontSize: 48,
-                            fontWeight: FontWeight.w800,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '25:00',
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: AppColors.text,
+                                fontSize: 48,
+                                fontWeight: FontWeight.w800,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Pomodoro Timer',
-                          style: TextStyle(color: AppColors.muted),
-                        ),
-                      ],
+                          SizedBox(height: 10),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Pomodoro Timer',
+                              maxLines: 1,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -778,6 +812,7 @@ class DailyReportScreen extends StatelessWidget {
                     color: AppColors.text,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
                   ),
                 ),
                 SizedBox(height: 14),
@@ -808,6 +843,7 @@ class DailyReportScreen extends StatelessWidget {
                     color: AppColors.text,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -843,6 +879,7 @@ class DailyReportScreen extends StatelessWidget {
                     color: AppColors.text,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
                   ),
                 ),
                 SizedBox(height: 14),
@@ -852,6 +889,7 @@ class DailyReportScreen extends StatelessWidget {
                     color: AppColors.muted,
                     fontSize: 15,
                     height: 1.5,
+                    decoration: TextDecoration.none,
                   ),
                 ),
               ],
@@ -986,6 +1024,7 @@ class NoteCard extends StatelessWidget {
             style: const TextStyle(
               color: AppColors.muted,
               fontSize: 13,
+              decoration: TextDecoration.none,
             ),
           ),
           const SizedBox(height: 8),
@@ -995,6 +1034,7 @@ class NoteCard extends StatelessWidget {
               color: AppColors.text,
               fontSize: 20,
               fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
             ),
           ),
           const SizedBox(height: 12),
@@ -1004,6 +1044,7 @@ class NoteCard extends StatelessWidget {
               color: AppColors.muted,
               fontSize: 15,
               height: 1.5,
+              decoration: TextDecoration.none,
             ),
           ),
         ],
@@ -1054,6 +1095,7 @@ class DetailPage extends StatelessWidget {
                         fontSize: 26,
                         fontWeight: FontWeight.w800,
                         color: AppColors.text,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
@@ -1104,6 +1146,7 @@ class ReminderEntryCard extends StatelessWidget {
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 height: 1.35,
+                decoration: TextDecoration.none,
               ),
             ),
           ),
@@ -1121,6 +1164,7 @@ class ReminderEntryCard extends StatelessWidget {
                 color: AppColors.text,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
               ),
             ),
           ),
@@ -1154,6 +1198,7 @@ class InfoBox extends StatelessWidget {
               color: AppColors.text,
               fontSize: 18,
               fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
             ),
           ),
           const SizedBox(height: 10),
@@ -1162,6 +1207,7 @@ class InfoBox extends StatelessWidget {
             style: const TextStyle(
               color: AppColors.muted,
               fontSize: 15,
+              decoration: TextDecoration.none,
             ),
           ),
         ],
@@ -1194,6 +1240,7 @@ class LargeTextBox extends StatelessWidget {
               color: AppColors.text,
               fontSize: 18,
               fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
             ),
           ),
           const SizedBox(height: 12),
@@ -1203,6 +1250,7 @@ class LargeTextBox extends StatelessWidget {
               color: AppColors.muted,
               fontSize: 15,
               height: 1.5,
+              decoration: TextDecoration.none,
             ),
           ),
         ],
@@ -1235,6 +1283,7 @@ class SummaryRow extends StatelessWidget {
             style: const TextStyle(
               color: AppColors.text,
               fontSize: 15,
+              decoration: TextDecoration.none,
             ),
           ),
         ),
@@ -1244,6 +1293,7 @@ class SummaryRow extends StatelessWidget {
             color: AppColors.text,
             fontSize: 15,
             fontWeight: FontWeight.w700,
+            decoration: TextDecoration.none,
           ),
         ),
       ],
@@ -1277,7 +1327,10 @@ class AppButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            decoration: TextDecoration.none,
+          ),
         ),
       ),
     );
