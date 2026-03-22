@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,8 +51,9 @@ class AppColors {
 class StorageKeys {
   static const String personalNotes = 'personal_notes';
   static const String studyNotes = 'study_notes';
-  static const String reportRating = 'report_rating';
-  static const String reportSummary = 'report_summary';
+  static const String reportHistory = 'report_history';
+  static const String timerCompletedSessions = 'timer_completed_sessions';
+  static const String timerTotalStudyMinutes = 'timer_total_study_minutes';
 }
 
 class AppNote {
@@ -82,6 +84,44 @@ class AppNote {
   }
 }
 
+class DailyReportEntry {
+  final String date;
+  final int rating;
+  final String summary;
+
+  DailyReportEntry({
+    required this.date,
+    required this.rating,
+    required this.summary,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'date': date,
+      'rating': rating,
+      'summary': summary,
+    };
+  }
+
+  factory DailyReportEntry.fromMap(Map<String, dynamic> map) {
+    return DailyReportEntry(
+      date: map['date'] ?? '',
+      rating: map['rating'] ?? 0,
+      summary: map['summary'] ?? '',
+    );
+  }
+}
+
+class TimerStats {
+  final int completedFocusSessions;
+  final int totalStudyMinutes;
+
+  const TimerStats({
+    required this.completedFocusSessions,
+    required this.totalStudyMinutes,
+  });
+}
+
 class AppLoader extends StatefulWidget {
   const AppLoader({super.key});
 
@@ -91,10 +131,14 @@ class AppLoader extends StatefulWidget {
 
 class _AppLoaderState extends State<AppLoader> {
   bool isLoading = true;
+
   List<AppNote> personalNotes = [];
   List<AppNote> studyNotes = [];
-  int dailyRating = 6;
-  String dailySummary = '';
+  List<DailyReportEntry> reportHistory = [];
+  TimerStats timerStats = const TimerStats(
+    completedFocusSessions: 0,
+    totalStudyMinutes: 0,
+  );
 
   @override
   void initState() {
@@ -107,9 +151,10 @@ class _AppLoaderState extends State<AppLoader> {
 
     final personalRaw = prefs.getString(StorageKeys.personalNotes);
     final studyRaw = prefs.getString(StorageKeys.studyNotes);
+    final reportRaw = prefs.getString(StorageKeys.reportHistory);
 
-    final List<AppNote> loadedPersonal = personalRaw == null
-        ? [
+    final loadedPersonal = personalRaw == null
+        ? <AppNote>[
             AppNote(
               title: 'Personal Note',
               content:
@@ -121,8 +166,8 @@ class _AppLoaderState extends State<AppLoader> {
             .map((e) => AppNote.fromMap(Map<String, dynamic>.from(e)))
             .toList();
 
-    final List<AppNote> loadedStudy = studyRaw == null
-        ? [
+    final loadedStudy = studyRaw == null
+        ? <AppNote>[
             AppNote(
               title: 'History Notes',
               content:
@@ -134,12 +179,32 @@ class _AppLoaderState extends State<AppLoader> {
             .map((e) => AppNote.fromMap(Map<String, dynamic>.from(e)))
             .toList();
 
+    final loadedReports = reportRaw == null
+        ? <DailyReportEntry>[
+            DailyReportEntry(
+              date: todayLabel(),
+              rating: 6,
+              summary:
+                  'Feeling good! Completed most of my tasks and made solid progress today.',
+            ),
+          ]
+        : (jsonDecode(reportRaw) as List)
+            .map((e) => DailyReportEntry.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+
+    final completedSessions =
+        prefs.getInt(StorageKeys.timerCompletedSessions) ?? 0;
+    final totalStudyMinutes =
+        prefs.getInt(StorageKeys.timerTotalStudyMinutes) ?? 0;
+
     setState(() {
       personalNotes = loadedPersonal;
       studyNotes = loadedStudy;
-      dailyRating = prefs.getInt(StorageKeys.reportRating) ?? 6;
-      dailySummary = prefs.getString(StorageKeys.reportSummary) ??
-          'Feeling good! Completed most of my tasks and made solid progress today.';
+      reportHistory = loadedReports;
+      timerStats = TimerStats(
+        completedFocusSessions: completedSessions,
+        totalStudyMinutes: totalStudyMinutes,
+      );
       isLoading = false;
     });
   }
@@ -164,15 +229,27 @@ class _AppLoaderState extends State<AppLoader> {
     setState(() {});
   }
 
-  Future<void> saveDailyReport({
-    required int rating,
-    required String summary,
-  }) async {
-    dailyRating = rating;
-    dailySummary = summary;
+  Future<void> saveReportHistory(List<DailyReportEntry> reports) async {
+    reportHistory = reports;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(StorageKeys.reportRating, rating);
-    await prefs.setString(StorageKeys.reportSummary, summary);
+    await prefs.setString(
+      StorageKeys.reportHistory,
+      jsonEncode(reports.map((e) => e.toMap()).toList()),
+    );
+    setState(() {});
+  }
+
+  Future<void> saveTimerStats(TimerStats stats) async {
+    timerStats = stats;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      StorageKeys.timerCompletedSessions,
+      stats.completedFocusSessions,
+    );
+    await prefs.setInt(
+      StorageKeys.timerTotalStudyMinutes,
+      stats.totalStudyMinutes,
+    );
     setState(() {});
   }
 
@@ -190,11 +267,12 @@ class _AppLoaderState extends State<AppLoader> {
     return MainScreen(
       personalNotes: personalNotes,
       studyNotes: studyNotes,
-      dailyRating: dailyRating,
-      dailySummary: dailySummary,
+      reportHistory: reportHistory,
+      timerStats: timerStats,
       onPersonalNotesChanged: savePersonalNotes,
       onStudyNotesChanged: saveStudyNotes,
-      onDailyReportChanged: saveDailyReport,
+      onReportHistoryChanged: saveReportHistory,
+      onTimerStatsChanged: saveTimerStats,
     );
   }
 }
@@ -202,22 +280,24 @@ class _AppLoaderState extends State<AppLoader> {
 class MainScreen extends StatefulWidget {
   final List<AppNote> personalNotes;
   final List<AppNote> studyNotes;
-  final int dailyRating;
-  final String dailySummary;
+  final List<DailyReportEntry> reportHistory;
+  final TimerStats timerStats;
+
   final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
   final Future<void> Function(List<AppNote>) onStudyNotesChanged;
-  final Future<void> Function({required int rating, required String summary})
-      onDailyReportChanged;
+  final Future<void> Function(List<DailyReportEntry>) onReportHistoryChanged;
+  final Future<void> Function(TimerStats) onTimerStatsChanged;
 
   const MainScreen({
     super.key,
     required this.personalNotes,
     required this.studyNotes,
-    required this.dailyRating,
-    required this.dailySummary,
+    required this.reportHistory,
+    required this.timerStats,
     required this.onPersonalNotesChanged,
     required this.onStudyNotesChanged,
-    required this.onDailyReportChanged,
+    required this.onReportHistoryChanged,
+    required this.onTimerStatsChanged,
   });
 
   @override
@@ -229,18 +309,26 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final latestReport =
+        widget.reportHistory.isNotEmpty ? widget.reportHistory.first : null;
+
     final pages = [
       HomeScreen(
         personalNotes: widget.personalNotes,
         studyNotes: widget.studyNotes,
-        dailyRating: widget.dailyRating,
+        latestReport: latestReport,
+        timerStats: widget.timerStats,
+        onPersonalNotesChanged: widget.onPersonalNotesChanged,
+        onStudyNotesChanged: widget.onStudyNotesChanged,
+        onReportHistoryChanged: widget.onReportHistoryChanged,
+        onTimerStatsChanged: widget.onTimerStatsChanged,
+        reportHistory: widget.reportHistory,
       ),
       const ReminderScreen(),
       DailyReportScreen(
-        initialRating: widget.dailyRating,
-        initialSummary: widget.dailySummary,
-        onSave: ({required int rating, required String summary}) async {
-          await widget.onDailyReportChanged(rating: rating, summary: summary);
+        reportHistory: widget.reportHistory,
+        onSaveHistory: (reports) async {
+          await widget.onReportHistoryChanged(reports);
           setState(() {});
         },
       ),
@@ -354,13 +442,26 @@ class AppPage extends StatelessWidget {
 class HomeScreen extends StatelessWidget {
   final List<AppNote> personalNotes;
   final List<AppNote> studyNotes;
-  final int dailyRating;
+  final DailyReportEntry? latestReport;
+  final TimerStats timerStats;
+  final List<DailyReportEntry> reportHistory;
+
+  final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
+  final Future<void> Function(List<AppNote>) onStudyNotesChanged;
+  final Future<void> Function(List<DailyReportEntry>) onReportHistoryChanged;
+  final Future<void> Function(TimerStats) onTimerStatsChanged;
 
   const HomeScreen({
     super.key,
     required this.personalNotes,
     required this.studyNotes,
-    required this.dailyRating,
+    required this.latestReport,
+    required this.timerStats,
+    required this.reportHistory,
+    required this.onPersonalNotesChanged,
+    required this.onStudyNotesChanged,
+    required this.onReportHistoryChanged,
+    required this.onTimerStatsChanged,
   });
 
   void _openPage(BuildContext context, Widget page) {
@@ -372,6 +473,10 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final todayRating = latestReport?.rating ?? 0;
+    final todaySummary = latestReport?.summary ?? 'No summary yet.';
+    final totalStudy = formatMinutes(timerStats.totalStudyMinutes);
+
     return AppPage(
       title: 'Home',
       actions: const [
@@ -396,9 +501,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
+                const Text(
                   'Stay focused and finish today strong.',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.muted,
                     fontSize: 14,
                     decoration: TextDecoration.none,
@@ -418,7 +523,7 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Today rating: $dailyRating/10 · Personal notes: ${personalNotes.length} · Study notes: ${studyNotes.length}',
+                          'Today rating: $todayRating/10 · Personal notes: ${personalNotes.length} · Study notes: ${studyNotes.length}',
                           style: const TextStyle(
                             color: AppColors.text,
                             fontWeight: FontWeight.w600,
@@ -457,10 +562,16 @@ class HomeScreen extends StatelessWidget {
               ),
               HomeFeatureCard(
                 title: 'Timer',
-                subtitle: 'Working timer',
+                subtitle: 'Working pomodoro',
                 icon: Icons.timer_rounded,
                 color: const Color(0xFF4A8BFF),
-                onTap: () => _openPage(context, const TimerScreen()),
+                onTap: () => _openPage(
+                  context,
+                  TimerScreen(
+                    initialStats: timerStats,
+                    onStatsChanged: onTimerStatsChanged,
+                  ),
+                ),
               ),
               HomeFeatureCard(
                 title: 'Daily Tasks',
@@ -479,22 +590,21 @@ class HomeScreen extends StatelessWidget {
                   NotesMainScreen(
                     personalNotes: personalNotes,
                     studyNotes: studyNotes,
-                    onPersonalNotesChanged: (_) async {},
-                    onStudyNotesChanged: (_) async {},
+                    onPersonalNotesChanged: onPersonalNotesChanged,
+                    onStudyNotesChanged: onStudyNotesChanged,
                   ),
                 ),
               ),
               HomeFeatureCard(
                 title: 'Daily Report',
-                subtitle: 'Tap stars and save',
+                subtitle: 'Save and history',
                 icon: Icons.star_rounded,
                 color: const Color(0xFFFFB84D),
                 onTap: () => _openPage(
                   context,
                   DailyReportScreen(
-                    initialRating: dailyRating,
-                    initialSummary: '',
-                    onSave: ({required int rating, required String summary}) async {},
+                    reportHistory: reportHistory,
+                    onSaveHistory: onReportHistoryChanged,
                   ),
                 ),
               ),
@@ -504,10 +614,10 @@ class HomeScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: premiumCardDecoration(),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Summary',
                   style: TextStyle(
                     color: AppColors.text,
@@ -516,23 +626,44 @@ class HomeScreen extends StatelessWidget {
                     decoration: TextDecoration.none,
                   ),
                 ),
-                SizedBox(height: 14),
+                const SizedBox(height: 14),
                 SummaryRow(
-                  icon: Icons.menu_book_rounded,
-                  label: 'Study Time',
-                  value: '3h 15m',
+                  icon: Icons.timer_rounded,
+                  label: 'Total Study Time',
+                  value: totalStudy,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 SummaryRow(
-                  icon: Icons.task_alt_rounded,
-                  label: 'Tasks Completed',
-                  value: '4 / 5',
+                  icon: Icons.repeat_rounded,
+                  label: 'Focus Sessions',
+                  value: '${timerStats.completedFocusSessions}',
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 SummaryRow(
-                  icon: Icons.cloud_done_rounded,
-                  label: 'Data Saved',
-                  value: 'Local',
+                  icon: Icons.star_rounded,
+                  label: 'Today Rating',
+                  value: '$todayRating/10',
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Today Summary',
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  todaySummary,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    height: 1.4,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ],
             ),
@@ -862,30 +993,88 @@ class MotivationScreen extends StatelessWidget {
 }
 
 class TimerScreen extends StatefulWidget {
-  const TimerScreen({super.key});
+  final TimerStats initialStats;
+  final Future<void> Function(TimerStats) onStatsChanged;
+
+  const TimerScreen({
+    super.key,
+    required this.initialStats,
+    required this.onStatsChanged,
+  });
 
   @override
   State<TimerScreen> createState() => _TimerScreenState();
 }
 
 class _TimerScreenState extends State<TimerScreen> {
-  static const int initialSeconds = 25 * 60;
-  int remainingSeconds = initialSeconds;
-  Timer? timer;
+  static const int focusSeconds = 25 * 60;
+  static const int breakSeconds = 5 * 60;
+
+  late int remainingSeconds;
+  bool isBreakMode = false;
   bool isRunning = false;
+  Timer? timer;
+
+  late int completedFocusSessions;
+  late int totalStudyMinutes;
+
+  @override
+  void initState() {
+    super.initState();
+    remainingSeconds = focusSeconds;
+    completedFocusSessions = widget.initialStats.completedFocusSessions;
+    totalStudyMinutes = widget.initialStats.totalStudyMinutes;
+  }
+
+  int get totalCurrentModeSeconds => isBreakMode ? breakSeconds : focusSeconds;
+
+  double get progress => remainingSeconds / totalCurrentModeSeconds;
+
+  Color get ringColor => isBreakMode ? AppColors.red : AppColors.green;
+
+  String get modeLabel => isBreakMode ? 'Break Timer' : 'Pomodoro Timer';
+
+  String get timeLabel {
+    final minutes = remainingSeconds ~/ 60;
+    final seconds = remainingSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> persistStats() async {
+    await widget.onStatsChanged(
+      TimerStats(
+        completedFocusSessions: completedFocusSessions,
+        totalStudyMinutes: totalStudyMinutes,
+      ),
+    );
+  }
 
   void startTimer() {
     if (isRunning) return;
     setState(() {
       isRunning = true;
     });
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
+
+    timer = Timer.periodic(const Duration(seconds: 1), (t) async {
       if (remainingSeconds <= 1) {
         t.cancel();
-        setState(() {
-          remainingSeconds = 0;
-          isRunning = false;
-        });
+
+        if (!isBreakMode) {
+          completedFocusSessions += 1;
+          totalStudyMinutes += 25;
+          await persistStats();
+          setState(() {
+            isBreakMode = true;
+            remainingSeconds = breakSeconds;
+            isRunning = false;
+          });
+        } else {
+          setState(() {
+            isBreakMode = false;
+            remainingSeconds = focusSeconds;
+            isRunning = false;
+          });
+        }
       } else {
         setState(() {
           remainingSeconds--;
@@ -904,15 +1093,10 @@ class _TimerScreenState extends State<TimerScreen> {
   void resetTimer() {
     timer?.cancel();
     setState(() {
-      remainingSeconds = initialSeconds;
       isRunning = false;
+      isBreakMode = false;
+      remainingSeconds = focusSeconds;
     });
-  }
-
-  String get timeLabel {
-    final minutes = remainingSeconds ~/ 60;
-    final seconds = remainingSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -936,64 +1120,72 @@ class _TimerScreenState extends State<TimerScreen> {
             decoration: premiumCardDecoration(),
             child: Column(
               children: [
-                Container(
-                  height: 230,
-                  width: 230,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        Colors.blue.withOpacity(0.35),
-                        const Color(0xFF163255),
-                        const Color(0xFF0D1B2E),
-                      ],
-                    ),
-                    border: Border.all(color: AppColors.border, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withOpacity(0.22),
-                        blurRadius: 30,
-                        spreadRadius: 4,
+                SizedBox(
+                  height: 250,
+                  width: 250,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: const Size(250, 250),
+                        painter: ProgressRingPainter(
+                          progress: progress,
+                          color: ringColor,
+                        ),
+                      ),
+                      Container(
+                        height: 190,
+                        width: 190,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              ringColor.withOpacity(0.18),
+                              const Color(0xFF163255),
+                              const Color(0xFF0D1B2E),
+                            ],
+                          ),
+                        ),
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    timeLabel,
+                                    maxLines: 1,
+                                    style: const TextStyle(
+                                      color: AppColors.text,
+                                      fontSize: 44,
+                                      fontWeight: FontWeight.w800,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    modeLabel,
+                                    maxLines: 1,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ],
-                  ),
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              timeLabel,
-                              maxLines: 1,
-                              style: const TextStyle(
-                                color: AppColors.text,
-                                fontSize: 48,
-                                fontWeight: FontWeight.w800,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          const FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              'Pomodoro Timer',
-                              maxLines: 1,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -1027,9 +1219,82 @@ class _TimerScreenState extends State<TimerScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: premiumCardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Timer Summary',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SummaryRow(
+                  icon: Icons.repeat_rounded,
+                  label: 'Completed Focus Sessions',
+                  value: '$completedFocusSessions',
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.timer_rounded,
+                  label: 'Total Study Time',
+                  value: formatMinutes(totalStudyMinutes),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+}
+
+class ProgressRingPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  ProgressRingPainter({
+    required this.progress,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = 18.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width / 2) - strokeWidth;
+
+    final basePaint = Paint()
+      ..color = Colors.white24
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final progressPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, basePaint);
+
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    const startAngle = -math.pi / 2;
+    final sweepAngle = 2 * math.pi * progress;
+
+    canvas.drawArc(rect, startAngle, sweepAngle, false, progressPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant ProgressRingPainter oldDelegate) {
+    return oldDelegate.progress != progress || oldDelegate.color != color;
   }
 }
 
@@ -1054,16 +1319,13 @@ class DailyTasksScreen extends StatelessWidget {
 }
 
 class DailyReportScreen extends StatefulWidget {
-  final int initialRating;
-  final String initialSummary;
-  final Future<void> Function({required int rating, required String summary})
-      onSave;
+  final List<DailyReportEntry> reportHistory;
+  final Future<void> Function(List<DailyReportEntry>) onSaveHistory;
 
   const DailyReportScreen({
     super.key,
-    required this.initialRating,
-    required this.initialSummary,
-    required this.onSave,
+    required this.reportHistory,
+    required this.onSaveHistory,
   });
 
   @override
@@ -1073,12 +1335,54 @@ class DailyReportScreen extends StatefulWidget {
 class _DailyReportScreenState extends State<DailyReportScreen> {
   late int rating;
   late TextEditingController summaryController;
+  late List<DailyReportEntry> history;
 
   @override
   void initState() {
     super.initState();
-    rating = widget.initialRating;
-    summaryController = TextEditingController(text: widget.initialSummary);
+    history = List.from(widget.reportHistory);
+
+    final today = todayLabel();
+    final todayEntry = history.cast<DailyReportEntry?>().firstWhere(
+          (e) => e?.date == today,
+          orElse: () => null,
+        );
+
+    rating = todayEntry?.rating ?? 6;
+    summaryController = TextEditingController(
+      text: todayEntry?.summary ?? '',
+    );
+  }
+
+  Future<void> saveTodayReport() async {
+    final today = todayLabel();
+    final newEntry = DailyReportEntry(
+      date: today,
+      rating: rating,
+      summary: summaryController.text.trim(),
+    );
+
+    final updated = List<DailyReportEntry>.from(history);
+    final existingIndex = updated.indexWhere((e) => e.date == today);
+
+    if (existingIndex >= 0) {
+      updated[existingIndex] = newEntry;
+    } else {
+      updated.insert(0, newEntry);
+    }
+
+    updated.sort((a, b) => b.date.compareTo(a.date));
+
+    setState(() {
+      history = updated;
+    });
+
+    await widget.onSaveHistory(updated);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Daily report saved')),
+    );
   }
 
   @override
@@ -1223,17 +1527,83 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
                 AppButton(
                   label: 'Save Report',
                   color: AppColors.blue,
-                  onTap: () async {
-                    await widget.onSave(
-                      rating: rating,
-                      summary: summaryController.text.trim(),
-                    );
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Daily report saved')),
-                    );
-                  },
+                  onTap: saveTodayReport,
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: premiumCardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Report History',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (history.isEmpty)
+                  const Text(
+                    'No saved reports yet.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      decoration: TextDecoration.none,
+                    ),
+                  )
+                else
+                  ...history.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.date,
+                              style: const TextStyle(
+                                color: AppColors.text,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Rating: ${entry.rating}/10',
+                              style: const TextStyle(
+                                color: AppColors.gold,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              entry.summary.isEmpty
+                                  ? 'No summary written.'
+                                  : entry.summary,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                height: 1.4,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
               ],
             ),
           ),
@@ -1406,6 +1776,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
       });
 
       await widget.onSave(notes);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Note saved')),
@@ -1855,4 +2226,11 @@ String todayLabel() {
     'December',
   ];
   return '${months[now.month - 1]} ${now.day}, ${now.year}';
+}
+
+String formatMinutes(int totalMinutes) {
+  final hours = totalMinutes ~/ 60;
+  final minutes = totalMinutes % 60;
+  if (hours == 0) return '${minutes}m';
+  return '${hours}h ${minutes}m';
 }
