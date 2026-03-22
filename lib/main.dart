@@ -47,7 +47,7 @@ class _MainScreenState extends State<MainScreen> {
     HomeScreen(),
     ReminderScreen(),
     DailyReportScreen(),
-    PersonalNotesScreen(),
+    NotesMainScreen(),
   ];
 
   @override
@@ -120,15 +120,18 @@ class AppPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Row(
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.text,
+                  Expanded(
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.text,
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 12),
                   ...?actions,
                 ],
               ),
@@ -224,11 +227,11 @@ class HomeScreen extends StatelessWidget {
                 onTap: () => _openPage(context, const DailyTasksScreen()),
               ),
               HomeFeatureCard(
-                title: 'Personal Notes',
-                subtitle: 'Save by date',
+                title: 'Notes',
+                subtitle: 'Personal and study',
                 icon: Icons.sticky_note_2_rounded,
                 color: const Color(0xFF5A8CFF),
-                onTap: () => _openPage(context, const PersonalNotesScreen()),
+                onTap: () => _openPage(context, const NotesMainScreen()),
               ),
               HomeFeatureCard(
                 title: 'Daily Report',
@@ -514,11 +517,20 @@ class TodoReminderScreen extends StatelessWidget {
       title: 'To-Do Reminder',
       child: Column(
         children: [
-          TaskTile(title: 'Finish Math Chapter', time: '10:30 AM'),
+          ReminderEntryCard(
+            title: 'Finish Math Chapter',
+            value: '10:30 AM',
+          ),
           SizedBox(height: 12),
-          TaskTile(title: 'Read History Notes', time: '02:00 PM'),
+          ReminderEntryCard(
+            title: 'Read History Notes',
+            value: '02:00 PM',
+          ),
           SizedBox(height: 12),
-          TaskTile(title: 'Complete Science Quiz', time: '05:30 PM'),
+          ReminderEntryCard(
+            title: 'Complete Science Quiz',
+            value: '05:30 PM',
+          ),
         ],
       ),
     );
@@ -564,11 +576,20 @@ class SessionReminderScreen extends StatelessWidget {
       title: 'Session Reminder',
       child: Column(
         children: [
-          TaskTile(title: 'Morning Session', time: '8:00 AM - 12:00 PM'),
+          ReminderEntryCard(
+            title: 'Morning Session',
+            value: '8:00 AM - 12:00 PM',
+          ),
           SizedBox(height: 12),
-          TaskTile(title: 'Afternoon Session', time: '2:00 PM - 4:00 PM'),
+          ReminderEntryCard(
+            title: 'Afternoon Session',
+            value: '2:00 PM - 4:00 PM',
+          ),
           SizedBox(height: 12),
-          TaskTile(title: 'Evening Session', time: '6:00 PM - 11:00 PM'),
+          ReminderEntryCard(
+            title: 'Evening Session',
+            value: '6:00 PM - 11:00 PM',
+          ),
         ],
       ),
     );
@@ -704,11 +725,20 @@ class DailyTasksScreen extends StatelessWidget {
       title: 'Daily Tasks',
       child: Column(
         children: [
-          TaskTile(title: 'Math Practice', time: 'Pending'),
+          ReminderEntryCard(
+            title: 'Math Practice',
+            value: 'Pending',
+          ),
           SizedBox(height: 12),
-          TaskTile(title: 'Physics Chapter 2', time: 'Pending'),
+          ReminderEntryCard(
+            title: 'Physics Chapter 2',
+            value: 'Pending',
+          ),
           SizedBox(height: 12),
-          TaskTile(title: 'English Essay', time: 'Done'),
+          ReminderEntryCard(
+            title: 'English Essay',
+            value: 'Done',
+          ),
         ],
       ),
     );
@@ -781,8 +811,9 @@ class DailyReportScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
                     star(true),
                     star(true),
@@ -832,19 +863,57 @@ class DailyReportScreen extends StatelessWidget {
   }
 }
 
-class PersonalNotesScreen extends StatelessWidget {
-  const PersonalNotesScreen({super.key});
+class NotesMainScreen extends StatelessWidget {
+  const NotesMainScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return AppPage(
-      title: 'Personal Notes',
+      title: 'Notes',
       actions: const [
         Icon(Icons.add_rounded, color: Colors.white),
       ],
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        children: const [
+        children: [
+          ReminderMenuCard(
+            title: 'Personal Notes',
+            subtitle: 'Daily personal notes saved by date.',
+            icon: Icons.person_rounded,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PersonalNotesScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          ReminderMenuCard(
+            title: 'Study Notes',
+            subtitle: 'Subject and topic notes saved by date.',
+            icon: Icons.menu_book_rounded,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StudyNotesScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PersonalNotesScreen extends StatelessWidget {
+  const PersonalNotesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const DetailPage(
+      title: 'Personal Notes',
+      child: Column(
+        children: [
           NoteCard(
             date: 'April 12, 2026',
             title: 'Personal Note',
@@ -853,10 +922,38 @@ class PersonalNotesScreen extends StatelessWidget {
           ),
           SizedBox(height: 14),
           NoteCard(
-            date: 'April 12, 2026',
-            title: 'Study Note',
+            date: 'April 11, 2026',
+            title: 'Personal Reflection',
             content:
-                'History chapter 3 needs revision. Math formulas from algebra should be reviewed again.',
+                'Morning was productive. I should improve consistency in the evening session.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StudyNotesScreen extends StatelessWidget {
+  const StudyNotesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const DetailPage(
+      title: 'Study Notes',
+      child: Column(
+        children: [
+          NoteCard(
+            date: 'April 12, 2026',
+            title: 'History Notes',
+            content:
+                'Chapter 3 needs revision. Focus on key events and dates before the next session.',
+          ),
+          SizedBox(height: 14),
+          NoteCard(
+            date: 'April 12, 2026',
+            title: 'Math Formula Note',
+            content:
+                'Review algebra formulas and practice equation solving for 30 minutes tomorrow.',
           ),
         ],
       ),
@@ -976,14 +1073,14 @@ class DetailPage extends StatelessWidget {
   }
 }
 
-class TaskTile extends StatelessWidget {
+class ReminderEntryCard extends StatelessWidget {
   final String title;
-  final String time;
+  final String value;
 
-  const TaskTile({
+  const ReminderEntryCard({
     super.key,
     required this.title,
-    required this.time,
+    required this.value,
   });
 
   @override
@@ -992,8 +1089,12 @@ class TaskTile extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: premiumCardDecoration(),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_rounded, color: Colors.white),
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(Icons.check_rounded, color: Colors.white),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -1001,12 +1102,27 @@ class TaskTile extends StatelessWidget {
               style: const TextStyle(
                 color: AppColors.text,
                 fontSize: 16,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
               ),
             ),
           ),
-          Text(
-            time,
-            style: const TextStyle(color: AppColors.muted),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
