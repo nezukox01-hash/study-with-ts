@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const StudyWithTSApp());
@@ -15,9 +19,7 @@ class StudyWithTSApp extends StatelessWidget {
       builder: (context, child) {
         final mediaQuery = MediaQuery.of(context);
         return MediaQuery(
-          data: mediaQuery.copyWith(
-            textScaler: TextScaler.noScaling,
-          ),
+          data: mediaQuery.copyWith(textScaler: TextScaler.noScaling),
           child: child!,
         );
       },
@@ -26,7 +28,7 @@ class StudyWithTSApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF071120),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      home: const AppLoader(),
     );
   }
 }
@@ -39,10 +41,184 @@ class AppColors {
   static const Color text = Colors.white;
   static const Color muted = Colors.white70;
   static const Color gold = Color(0xFFFFB84D);
+  static const Color blue = Color(0xFF4A8BFF);
+  static const Color purple = Color(0xFF7B61FF);
+  static const Color green = Color(0xFF20B486);
+  static const Color red = Color(0xFFE55B6B);
+}
+
+class StorageKeys {
+  static const String personalNotes = 'personal_notes';
+  static const String studyNotes = 'study_notes';
+  static const String reportRating = 'report_rating';
+  static const String reportSummary = 'report_summary';
+}
+
+class AppNote {
+  final String title;
+  final String content;
+  final String date;
+
+  AppNote({
+    required this.title,
+    required this.content,
+    required this.date,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'content': content,
+      'date': date,
+    };
+  }
+
+  factory AppNote.fromMap(Map<String, dynamic> map) {
+    return AppNote(
+      title: map['title'] ?? '',
+      content: map['content'] ?? '',
+      date: map['date'] ?? '',
+    );
+  }
+}
+
+class AppLoader extends StatefulWidget {
+  const AppLoader({super.key});
+
+  @override
+  State<AppLoader> createState() => _AppLoaderState();
+}
+
+class _AppLoaderState extends State<AppLoader> {
+  bool isLoading = true;
+  List<AppNote> personalNotes = [];
+  List<AppNote> studyNotes = [];
+  int dailyRating = 6;
+  String dailySummary = '';
+
+  @override
+  void initState() {
+    super.initState();
+    loadAll();
+  }
+
+  Future<void> loadAll() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final personalRaw = prefs.getString(StorageKeys.personalNotes);
+    final studyRaw = prefs.getString(StorageKeys.studyNotes);
+
+    final List<AppNote> loadedPersonal = personalRaw == null
+        ? [
+            AppNote(
+              title: 'Personal Note',
+              content:
+                  'Today I stayed more focused in the afternoon. I need to reduce phone distraction at night.',
+              date: todayLabel(),
+            ),
+          ]
+        : (jsonDecode(personalRaw) as List)
+            .map((e) => AppNote.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+
+    final List<AppNote> loadedStudy = studyRaw == null
+        ? [
+            AppNote(
+              title: 'History Notes',
+              content:
+                  'Chapter 3 needs revision. Focus on key events and dates before the next session.',
+              date: todayLabel(),
+            ),
+          ]
+        : (jsonDecode(studyRaw) as List)
+            .map((e) => AppNote.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+
+    setState(() {
+      personalNotes = loadedPersonal;
+      studyNotes = loadedStudy;
+      dailyRating = prefs.getInt(StorageKeys.reportRating) ?? 6;
+      dailySummary = prefs.getString(StorageKeys.reportSummary) ??
+          'Feeling good! Completed most of my tasks and made solid progress today.';
+      isLoading = false;
+    });
+  }
+
+  Future<void> savePersonalNotes(List<AppNote> notes) async {
+    personalNotes = notes;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      StorageKeys.personalNotes,
+      jsonEncode(notes.map((e) => e.toMap()).toList()),
+    );
+    setState(() {});
+  }
+
+  Future<void> saveStudyNotes(List<AppNote> notes) async {
+    studyNotes = notes;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      StorageKeys.studyNotes,
+      jsonEncode(notes.map((e) => e.toMap()).toList()),
+    );
+    setState(() {});
+  }
+
+  Future<void> saveDailyReport({
+    required int rating,
+    required String summary,
+  }) async {
+    dailyRating = rating;
+    dailySummary = summary;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(StorageKeys.reportRating, rating);
+    await prefs.setString(StorageKeys.reportSummary, summary);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return MainScreen(
+      personalNotes: personalNotes,
+      studyNotes: studyNotes,
+      dailyRating: dailyRating,
+      dailySummary: dailySummary,
+      onPersonalNotesChanged: savePersonalNotes,
+      onStudyNotesChanged: saveStudyNotes,
+      onDailyReportChanged: saveDailyReport,
+    );
+  }
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final List<AppNote> personalNotes;
+  final List<AppNote> studyNotes;
+  final int dailyRating;
+  final String dailySummary;
+  final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
+  final Future<void> Function(List<AppNote>) onStudyNotesChanged;
+  final Future<void> Function({required int rating, required String summary})
+      onDailyReportChanged;
+
+  const MainScreen({
+    super.key,
+    required this.personalNotes,
+    required this.studyNotes,
+    required this.dailyRating,
+    required this.dailySummary,
+    required this.onPersonalNotesChanged,
+    required this.onStudyNotesChanged,
+    required this.onDailyReportChanged,
+  });
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -51,15 +227,37 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
 
-  final List<Widget> pages = const [
-    HomeScreen(),
-    ReminderScreen(),
-    DailyReportScreen(),
-    NotesMainScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      HomeScreen(
+        personalNotes: widget.personalNotes,
+        studyNotes: widget.studyNotes,
+        dailyRating: widget.dailyRating,
+      ),
+      const ReminderScreen(),
+      DailyReportScreen(
+        initialRating: widget.dailyRating,
+        initialSummary: widget.dailySummary,
+        onSave: ({required int rating, required String summary}) async {
+          await widget.onDailyReportChanged(rating: rating, summary: summary);
+          setState(() {});
+        },
+      ),
+      NotesMainScreen(
+        personalNotes: widget.personalNotes,
+        studyNotes: widget.studyNotes,
+        onPersonalNotesChanged: (notes) async {
+          await widget.onPersonalNotesChanged(notes);
+          setState(() {});
+        },
+        onStudyNotesChanged: (notes) async {
+          await widget.onStudyNotesChanged(notes);
+          setState(() {});
+        },
+      ),
+    ];
+
     return Scaffold(
       body: pages[selectedIndex],
       bottomNavigationBar: NavigationBar(
@@ -154,7 +352,16 @@ class AppPage extends StatelessWidget {
 }
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final List<AppNote> personalNotes;
+  final List<AppNote> studyNotes;
+  final int dailyRating;
+
+  const HomeScreen({
+    super.key,
+    required this.personalNotes,
+    required this.studyNotes,
+    required this.dailyRating,
+  });
 
   void _openPage(BuildContext context, Widget page) {
     Navigator.push(
@@ -176,10 +383,10 @@ class HomeScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: premiumCardDecoration(),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Study with TS',
                   style: TextStyle(
                     color: AppColors.text,
@@ -188,13 +395,38 @@ class HomeScreen extends StatelessWidget {
                     decoration: TextDecoration.none,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
                   'Stay focused and finish today strong.',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppColors.muted,
                     fontSize: 14,
                     decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.bolt_rounded, color: AppColors.gold),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Today rating: $dailyRating/10 · Personal notes: ${personalNotes.length} · Study notes: ${studyNotes.length}',
+                          style: const TextStyle(
+                            color: AppColors.text,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -225,7 +457,7 @@ class HomeScreen extends StatelessWidget {
               ),
               HomeFeatureCard(
                 title: 'Timer',
-                subtitle: 'Focus sessions',
+                subtitle: 'Working timer',
                 icon: Icons.timer_rounded,
                 color: const Color(0xFF4A8BFF),
                 onTap: () => _openPage(context, const TimerScreen()),
@@ -242,14 +474,29 @@ class HomeScreen extends StatelessWidget {
                 subtitle: 'Personal and study',
                 icon: Icons.sticky_note_2_rounded,
                 color: const Color(0xFF5A8CFF),
-                onTap: () => _openPage(context, const NotesMainScreen()),
+                onTap: () => _openPage(
+                  context,
+                  NotesMainScreen(
+                    personalNotes: personalNotes,
+                    studyNotes: studyNotes,
+                    onPersonalNotesChanged: (_) async {},
+                    onStudyNotesChanged: (_) async {},
+                  ),
+                ),
               ),
               HomeFeatureCard(
                 title: 'Daily Report',
-                subtitle: 'Rate your day',
+                subtitle: 'Tap stars and save',
                 icon: Icons.star_rounded,
                 color: const Color(0xFFFFB84D),
-                onTap: () => _openPage(context, const DailyReportScreen()),
+                onTap: () => _openPage(
+                  context,
+                  DailyReportScreen(
+                    initialRating: dailyRating,
+                    initialSummary: '',
+                    onSave: ({required int rating, required String summary}) async {},
+                  ),
+                ),
               ),
             ],
           ),
@@ -284,8 +531,8 @@ class HomeScreen extends StatelessWidget {
                 SizedBox(height: 12),
                 SummaryRow(
                   icon: Icons.cloud_done_rounded,
-                  label: 'Data Sync',
-                  value: 'Enabled',
+                  label: 'Data Saved',
+                  value: 'Local',
                 ),
               ],
             ),
@@ -533,20 +780,11 @@ class TodoReminderScreen extends StatelessWidget {
       title: 'To-Do Reminder',
       child: Column(
         children: [
-          ReminderEntryCard(
-            title: 'Finish Math Chapter',
-            value: '10:30 AM',
-          ),
+          ReminderEntryCard(title: 'Finish Math Chapter', value: '10:30 AM'),
           SizedBox(height: 12),
-          ReminderEntryCard(
-            title: 'Read History Notes',
-            value: '02:00 PM',
-          ),
+          ReminderEntryCard(title: 'Read History Notes', value: '02:00 PM'),
           SizedBox(height: 12),
-          ReminderEntryCard(
-            title: 'Complete Science Quiz',
-            value: '05:30 PM',
-          ),
+          ReminderEntryCard(title: 'Complete Science Quiz', value: '05:30 PM'),
         ],
       ),
     );
@@ -563,15 +801,9 @@ class AssistantReminderScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InfoBox(
-            title: 'Check-In Interval',
-            value: 'Every 2 Hours',
-          ),
+          InfoBox(title: 'Check-In Interval', value: 'Every 2 Hours'),
           SizedBox(height: 14),
-          InfoBox(
-            title: 'Mode',
-            value: 'Friendly',
-          ),
+          InfoBox(title: 'Mode', value: 'Friendly'),
           SizedBox(height: 14),
           LargeTextBox(
             title: 'Reminder Message',
@@ -592,20 +824,11 @@ class SessionReminderScreen extends StatelessWidget {
       title: 'Session Reminder',
       child: Column(
         children: [
-          ReminderEntryCard(
-            title: 'Morning Session',
-            value: '8:00 AM - 12:00 PM',
-          ),
+          ReminderEntryCard(title: 'Morning Session', value: '8:00 AM - 12:00 PM'),
           SizedBox(height: 12),
-          ReminderEntryCard(
-            title: 'Afternoon Session',
-            value: '2:00 PM - 4:00 PM',
-          ),
+          ReminderEntryCard(title: 'Afternoon Session', value: '2:00 PM - 4:00 PM'),
           SizedBox(height: 12),
-          ReminderEntryCard(
-            title: 'Evening Session',
-            value: '6:00 PM - 11:00 PM',
-          ),
+          ReminderEntryCard(title: 'Evening Session', value: '6:00 PM - 11:00 PM'),
         ],
       ),
     );
@@ -638,8 +861,65 @@ class MotivationScreen extends StatelessWidget {
   }
 }
 
-class TimerScreen extends StatelessWidget {
+class TimerScreen extends StatefulWidget {
   const TimerScreen({super.key});
+
+  @override
+  State<TimerScreen> createState() => _TimerScreenState();
+}
+
+class _TimerScreenState extends State<TimerScreen> {
+  static const int initialSeconds = 25 * 60;
+  int remainingSeconds = initialSeconds;
+  Timer? timer;
+  bool isRunning = false;
+
+  void startTimer() {
+    if (isRunning) return;
+    setState(() {
+      isRunning = true;
+    });
+    timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (remainingSeconds <= 1) {
+        t.cancel();
+        setState(() {
+          remainingSeconds = 0;
+          isRunning = false;
+        });
+      } else {
+        setState(() {
+          remainingSeconds--;
+        });
+      }
+    });
+  }
+
+  void pauseTimer() {
+    timer?.cancel();
+    setState(() {
+      isRunning = false;
+    });
+  }
+
+  void resetTimer() {
+    timer?.cancel();
+    setState(() {
+      remainingSeconds = initialSeconds;
+      isRunning = false;
+    });
+  }
+
+  String get timeLabel {
+    final minutes = remainingSeconds ~/ 60;
+    final seconds = remainingSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -682,13 +962,13 @@ class TimerScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              '25:00',
+                              timeLabel,
                               maxLines: 1,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 color: AppColors.text,
                                 fontSize: 48,
                                 fontWeight: FontWeight.w800,
@@ -696,8 +976,8 @@ class TimerScreen extends StatelessWidget {
                               ),
                             ),
                           ),
-                          SizedBox(height: 10),
-                          FittedBox(
+                          const SizedBox(height: 10),
+                          const FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
                               'Pomodoro Timer',
@@ -717,26 +997,29 @@ class TimerScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Row(
+                Row(
                   children: [
                     Expanded(
                       child: AppButton(
                         label: 'Start',
-                        color: Color(0xFF4A8BFF),
+                        color: AppColors.blue,
+                        onTap: startTimer,
                       ),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: AppButton(
                         label: 'Pause',
-                        color: Color(0xFF1B3558),
+                        color: const Color(0xFF1B3558),
+                        onTap: pauseTimer,
                       ),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: AppButton(
                         label: 'Reset',
-                        color: Color(0xFFE55B6B),
+                        color: AppColors.red,
+                        onTap: resetTimer,
                       ),
                     ),
                   ],
@@ -759,35 +1042,49 @@ class DailyTasksScreen extends StatelessWidget {
       title: 'Daily Tasks',
       child: Column(
         children: [
-          ReminderEntryCard(
-            title: 'Math Practice',
-            value: 'Pending',
-          ),
+          ReminderEntryCard(title: 'Math Practice', value: 'Pending'),
           SizedBox(height: 12),
-          ReminderEntryCard(
-            title: 'Physics Chapter 2',
-            value: 'Pending',
-          ),
+          ReminderEntryCard(title: 'Physics Chapter 2', value: 'Pending'),
           SizedBox(height: 12),
-          ReminderEntryCard(
-            title: 'English Essay',
-            value: 'Done',
-          ),
+          ReminderEntryCard(title: 'English Essay', value: 'Done'),
         ],
       ),
     );
   }
 }
 
-class DailyReportScreen extends StatelessWidget {
-  const DailyReportScreen({super.key});
+class DailyReportScreen extends StatefulWidget {
+  final int initialRating;
+  final String initialSummary;
+  final Future<void> Function({required int rating, required String summary})
+      onSave;
 
-  Widget star(bool filled) {
-    return Icon(
-      Icons.star_rounded,
-      color: filled ? AppColors.gold : Colors.white24,
-      size: 28,
-    );
+  const DailyReportScreen({
+    super.key,
+    required this.initialRating,
+    required this.initialSummary,
+    required this.onSave,
+  });
+
+  @override
+  State<DailyReportScreen> createState() => _DailyReportScreenState();
+}
+
+class _DailyReportScreenState extends State<DailyReportScreen> {
+  late int rating;
+  late TextEditingController summaryController;
+
+  @override
+  void initState() {
+    super.initState();
+    rating = widget.initialRating;
+    summaryController = TextEditingController(text: widget.initialSummary);
+  }
+
+  @override
+  void dispose() {
+    summaryController.dispose();
+    super.dispose();
   }
 
   @override
@@ -850,18 +1147,31 @@ class DailyReportScreen extends StatelessWidget {
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: [
-                    star(true),
-                    star(true),
-                    star(true),
-                    star(true),
-                    star(true),
-                    star(true),
-                    star(false),
-                    star(false),
-                    star(false),
-                    star(false),
-                  ],
+                  children: List.generate(10, (index) {
+                    final starNumber = index + 1;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          rating = starNumber;
+                        });
+                      },
+                      child: Icon(
+                        Icons.star_rounded,
+                        color: starNumber <= rating
+                            ? AppColors.gold
+                            : Colors.white24,
+                        size: 28,
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Selected rating: $rating/10',
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ],
             ),
@@ -870,10 +1180,10 @@ class DailyReportScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: premiumCardDecoration(),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Daily Summary',
                   style: TextStyle(
                     color: AppColors.text,
@@ -882,15 +1192,47 @@ class DailyReportScreen extends StatelessWidget {
                     decoration: TextDecoration.none,
                   ),
                 ),
-                SizedBox(height: 14),
-                Text(
-                  'Feeling good! Completed most of my tasks. Need to review a bit more on history, but made great progress today.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 15,
-                    height: 1.5,
+                const SizedBox(height: 14),
+                TextField(
+                  controller: summaryController,
+                  maxLines: 6,
+                  style: const TextStyle(
+                    color: AppColors.text,
                     decoration: TextDecoration.none,
                   ),
+                  decoration: InputDecoration(
+                    hintText: 'Write how your day went...',
+                    hintStyle: const TextStyle(color: AppColors.muted),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.06),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: AppColors.blue),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                AppButton(
+                  label: 'Save Report',
+                  color: AppColors.blue,
+                  onTap: () async {
+                    await widget.onSave(
+                      rating: rating,
+                      summary: summaryController.text.trim(),
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Daily report saved')),
+                    );
+                  },
                 ),
               ],
             ),
@@ -902,7 +1244,18 @@ class DailyReportScreen extends StatelessWidget {
 }
 
 class NotesMainScreen extends StatelessWidget {
-  const NotesMainScreen({super.key});
+  final List<AppNote> personalNotes;
+  final List<AppNote> studyNotes;
+  final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
+  final Future<void> Function(List<AppNote>) onStudyNotesChanged;
+
+  const NotesMainScreen({
+    super.key,
+    required this.personalNotes,
+    required this.studyNotes,
+    required this.onPersonalNotesChanged,
+    required this.onStudyNotesChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -921,7 +1274,15 @@ class NotesMainScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PersonalNotesScreen()),
+                MaterialPageRoute(
+                  builder: (_) => NotesListScreen(
+                    title: 'Personal Notes',
+                    notes: personalNotes,
+                    defaultNoteTitle: 'Personal Note',
+                    emptyMessage: 'No personal notes yet.',
+                    onSave: onPersonalNotesChanged,
+                  ),
+                ),
               );
             },
           ),
@@ -933,7 +1294,15 @@ class NotesMainScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const StudyNotesScreen()),
+                MaterialPageRoute(
+                  builder: (_) => NotesListScreen(
+                    title: 'Study Notes',
+                    notes: studyNotes,
+                    defaultNoteTitle: 'Study Note',
+                    emptyMessage: 'No study notes yet.',
+                    onSave: onStudyNotesChanged,
+                  ),
+                ),
               );
             },
           ),
@@ -943,58 +1312,163 @@ class NotesMainScreen extends StatelessWidget {
   }
 }
 
-class PersonalNotesScreen extends StatelessWidget {
-  const PersonalNotesScreen({super.key});
+class NotesListScreen extends StatefulWidget {
+  final String title;
+  final List<AppNote> notes;
+  final String defaultNoteTitle;
+  final String emptyMessage;
+  final Future<void> Function(List<AppNote>) onSave;
+
+  const NotesListScreen({
+    super.key,
+    required this.title,
+    required this.notes,
+    required this.defaultNoteTitle,
+    required this.emptyMessage,
+    required this.onSave,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return const DetailPage(
-      title: 'Personal Notes',
-      child: Column(
-        children: [
-          NoteCard(
-            date: 'April 12, 2026',
-            title: 'Personal Note',
-            content:
-                'Today I stayed more focused in the afternoon. I need to reduce phone distraction at night.',
-          ),
-          SizedBox(height: 14),
-          NoteCard(
-            date: 'April 11, 2026',
-            title: 'Personal Reflection',
-            content:
-                'Morning was productive. I should improve consistency in the evening session.',
-          ),
-        ],
-      ),
-    );
-  }
+  State<NotesListScreen> createState() => _NotesListScreenState();
 }
 
-class StudyNotesScreen extends StatelessWidget {
-  const StudyNotesScreen({super.key});
+class _NotesListScreenState extends State<NotesListScreen> {
+  late List<AppNote> notes;
+
+  @override
+  void initState() {
+    super.initState();
+    notes = List.from(widget.notes);
+  }
+
+  Future<void> addNoteDialog() async {
+    final titleController = TextEditingController(text: widget.defaultNoteTitle);
+    final contentController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface2,
+          title: Text(
+            'Add ${widget.title}',
+            style: const TextStyle(color: AppColors.text),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: titleController,
+                  style: const TextStyle(color: AppColors.text),
+                  decoration: const InputDecoration(
+                    labelText: 'Title',
+                    labelStyle: TextStyle(color: AppColors.muted),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: contentController,
+                  maxLines: 5,
+                  style: const TextStyle(color: AppColors.text),
+                  decoration: const InputDecoration(
+                    labelText: 'Content',
+                    labelStyle: TextStyle(color: AppColors.muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == true) {
+      final newNote = AppNote(
+        title: titleController.text.trim().isEmpty
+            ? widget.defaultNoteTitle
+            : titleController.text.trim(),
+        content: contentController.text.trim(),
+        date: todayLabel(),
+      );
+
+      setState(() {
+        notes.insert(0, newNote);
+      });
+
+      await widget.onSave(notes);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Note saved')),
+      );
+    }
+  }
+
+  Future<void> deleteNote(int index) async {
+    final updated = List<AppNote>.from(notes)..removeAt(index);
+    setState(() {
+      notes = updated;
+    });
+    await widget.onSave(notes);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const DetailPage(
-      title: 'Study Notes',
-      child: Column(
-        children: [
-          NoteCard(
-            date: 'April 12, 2026',
-            title: 'History Notes',
-            content:
-                'Chapter 3 needs revision. Focus on key events and dates before the next session.',
-          ),
-          SizedBox(height: 14),
-          NoteCard(
-            date: 'April 12, 2026',
-            title: 'Math Formula Note',
-            content:
-                'Review algebra formulas and practice equation solving for 30 minutes tomorrow.',
-          ),
-        ],
-      ),
+    return AppPage(
+      title: widget.title,
+      actions: [
+        IconButton(
+          onPressed: addNoteDialog,
+          icon: const Icon(Icons.add_rounded, color: Colors.white),
+        ),
+      ],
+      child: notes.isEmpty
+          ? Center(
+              child: Text(
+                widget.emptyMessage,
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              itemCount: notes.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
+              itemBuilder: (_, index) {
+                final note = notes[index];
+                return Stack(
+                  children: [
+                    NoteCard(
+                      date: note.date,
+                      title: note.title,
+                      content: note.content,
+                    ),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: IconButton(
+                        onPressed: () => deleteNote(index),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
     );
   }
 }
@@ -1016,38 +1490,41 @@ class NoteCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: premiumCardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            date,
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontSize: 13,
-              decoration: TextDecoration.none,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              date,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 13,
+                decoration: TextDecoration.none,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              decoration: TextDecoration.none,
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            content,
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontSize: 15,
-              height: 1.5,
-              decoration: TextDecoration.none,
+            const SizedBox(height: 12),
+            Text(
+              content.isEmpty ? 'No content' : content,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 15,
+                height: 1.5,
+                decoration: TextDecoration.none,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1304,11 +1781,13 @@ class SummaryRow extends StatelessWidget {
 class AppButton extends StatelessWidget {
   final String label;
   final Color color;
+  final VoidCallback onTap;
 
   const AppButton({
     super.key,
     required this.label,
     required this.color,
+    required this.onTap,
   });
 
   @override
@@ -1316,7 +1795,7 @@ class AppButton extends StatelessWidget {
     return SizedBox(
       height: 50,
       child: ElevatedButton(
-        onPressed: () {},
+        onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
@@ -1357,4 +1836,23 @@ BoxDecoration premiumCardDecoration() {
       ),
     ],
   );
+}
+
+String todayLabel() {
+  final now = DateTime.now();
+  const months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return '${months[now.month - 1]} ${now.day}, ${now.year}';
 }
