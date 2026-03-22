@@ -56,7 +56,12 @@ class StorageKeys {
   static const String reportHistory = 'report_history';
   static const String timerCompletedSessions = 'timer_completed_sessions';
   static const String timerTotalStudyMinutes = 'timer_total_study_minutes';
+  static const String timerFocusMinutes = 'timer_focus_minutes';
+  static const String timerBreakMinutes = 'timer_break_minutes';
+  static const String timerTheme = 'timer_theme';
 }
+
+enum TimerThemeType { ring, hourglass }
 
 class AppNote {
   final String title;
@@ -125,11 +130,34 @@ class DailyReportEntry {
 class TimerStats {
   final int completedFocusSessions;
   final int totalStudyMinutes;
+  final int focusMinutes;
+  final int breakMinutes;
+  final TimerThemeType theme;
 
   const TimerStats({
     required this.completedFocusSessions,
     required this.totalStudyMinutes,
+    required this.focusMinutes,
+    required this.breakMinutes,
+    required this.theme,
   });
+
+  TimerStats copyWith({
+    int? completedFocusSessions,
+    int? totalStudyMinutes,
+    int? focusMinutes,
+    int? breakMinutes,
+    TimerThemeType? theme,
+  }) {
+    return TimerStats(
+      completedFocusSessions:
+          completedFocusSessions ?? this.completedFocusSessions,
+      totalStudyMinutes: totalStudyMinutes ?? this.totalStudyMinutes,
+      focusMinutes: focusMinutes ?? this.focusMinutes,
+      breakMinutes: breakMinutes ?? this.breakMinutes,
+      theme: theme ?? this.theme,
+    );
+  }
 }
 
 class AppLoader extends StatefulWidget {
@@ -147,6 +175,9 @@ class _AppLoaderState extends State<AppLoader> {
   TimerStats timerStats = const TimerStats(
     completedFocusSessions: 0,
     totalStudyMinutes: 0,
+    focusMinutes: 25,
+    breakMinutes: 5,
+    theme: TimerThemeType.ring,
   );
 
   @override
@@ -206,6 +237,9 @@ class _AppLoaderState extends State<AppLoader> {
         prefs.getInt(StorageKeys.timerCompletedSessions) ?? 0;
     final totalStudyMinutes =
         prefs.getInt(StorageKeys.timerTotalStudyMinutes) ?? 0;
+    final focusMinutes = prefs.getInt(StorageKeys.timerFocusMinutes) ?? 25;
+    final breakMinutes = prefs.getInt(StorageKeys.timerBreakMinutes) ?? 5;
+    final themeRaw = prefs.getString(StorageKeys.timerTheme) ?? 'ring';
 
     setState(() {
       personalNotes = loadedPersonal;
@@ -214,6 +248,11 @@ class _AppLoaderState extends State<AppLoader> {
       timerStats = TimerStats(
         completedFocusSessions: completedSessions,
         totalStudyMinutes: totalStudyMinutes,
+        focusMinutes: focusMinutes,
+        breakMinutes: breakMinutes,
+        theme: themeRaw == 'hourglass'
+            ? TimerThemeType.hourglass
+            : TimerThemeType.ring,
       );
       isLoading = false;
     });
@@ -259,6 +298,18 @@ class _AppLoaderState extends State<AppLoader> {
     await prefs.setInt(
       StorageKeys.timerTotalStudyMinutes,
       stats.totalStudyMinutes,
+    );
+    await prefs.setInt(
+      StorageKeys.timerFocusMinutes,
+      stats.focusMinutes,
+    );
+    await prefs.setInt(
+      StorageKeys.timerBreakMinutes,
+      stats.breakMinutes,
+    );
+    await prefs.setString(
+      StorageKeys.timerTheme,
+      stats.theme == TimerThemeType.hourglass ? 'hourglass' : 'ring',
     );
     setState(() {});
   }
@@ -450,10 +501,7 @@ class CustomBottomNav extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF34D8FF),
-                      Color(0xFF2E7DFF),
-                    ],
+                    colors: [Color(0xFF34D8FF), Color(0xFF2E7DFF)],
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -539,10 +587,7 @@ class AppPage extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF10284A),
-            Color(0xFF071120),
-          ],
+          colors: [Color(0xFF10284A), Color(0xFF071120)],
         ),
       ),
       child: SafeArea(
@@ -977,10 +1022,11 @@ class TimerScreen extends StatefulWidget {
 }
 
 class _TimerScreenState extends State<TimerScreen> {
-  static const int focusSeconds = 25 * 60;
-  static const int breakSeconds = 5 * 60;
-
+  late int focusMinutes;
+  late int breakMinutes;
+  late TimerThemeType theme;
   late int remainingSeconds;
+
   bool isBreakMode = false;
   bool isRunning = false;
   Timer? timer;
@@ -991,15 +1037,22 @@ class _TimerScreenState extends State<TimerScreen> {
   @override
   void initState() {
     super.initState();
-    remainingSeconds = focusSeconds;
+    focusMinutes = widget.initialStats.focusMinutes;
+    breakMinutes = widget.initialStats.breakMinutes;
+    theme = widget.initialStats.theme;
+    remainingSeconds = focusMinutes * 60;
     completedFocusSessions = widget.initialStats.completedFocusSessions;
     totalStudyMinutes = widget.initialStats.totalStudyMinutes;
   }
 
-  int get totalCurrentModeSeconds => isBreakMode ? breakSeconds : focusSeconds;
+  int get totalCurrentModeSeconds =>
+      (isBreakMode ? breakMinutes : focusMinutes) * 60;
+
   double get progress => remainingSeconds / totalCurrentModeSeconds;
+
   Color get ringColor => isBreakMode ? AppColors.red : AppColors.green;
-  String get modeLabel => isBreakMode ? 'Break Timer' : 'Pomodoro Timer';
+
+  String get modeLabel => isBreakMode ? 'Break Timer' : 'Focus Timer';
 
   String get timeLabel {
     final minutes = remainingSeconds ~/ 60;
@@ -1012,6 +1065,9 @@ class _TimerScreenState extends State<TimerScreen> {
       TimerStats(
         completedFocusSessions: completedFocusSessions,
         totalStudyMinutes: totalStudyMinutes,
+        focusMinutes: focusMinutes,
+        breakMinutes: breakMinutes,
+        theme: theme,
       ),
     );
   }
@@ -1026,17 +1082,17 @@ class _TimerScreenState extends State<TimerScreen> {
 
         if (!isBreakMode) {
           completedFocusSessions += 1;
-          totalStudyMinutes += 25;
+          totalStudyMinutes += focusMinutes;
           await persistStats();
           setState(() {
             isBreakMode = true;
-            remainingSeconds = breakSeconds;
+            remainingSeconds = breakMinutes * 60;
             isRunning = false;
           });
         } else {
           setState(() {
             isBreakMode = false;
-            remainingSeconds = focusSeconds;
+            remainingSeconds = focusMinutes * 60;
             isRunning = false;
           });
         }
@@ -1056,8 +1112,152 @@ class _TimerScreenState extends State<TimerScreen> {
     setState(() {
       isRunning = false;
       isBreakMode = false;
-      remainingSeconds = focusSeconds;
+      remainingSeconds = focusMinutes * 60;
     });
+  }
+
+  Future<void> openSettings() async {
+    final focusController =
+        TextEditingController(text: focusMinutes.toString());
+    final breakController =
+        TextEditingController(text: breakMinutes.toString());
+    TimerThemeType tempTheme = theme;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.surface2,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      isScrollControlled: true,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Timer Settings',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: focusController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: AppColors.text),
+                          decoration: InputDecoration(
+                            labelText: 'Focus Minutes',
+                            labelStyle:
+                                const TextStyle(color: AppColors.muted),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.05),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: breakController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: AppColors.text),
+                          decoration: InputDecoration(
+                            labelText: 'Break Minutes',
+                            labelStyle:
+                                const TextStyle(color: AppColors.muted),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.05),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Timer Theme',
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ThemeChoiceCard(
+                          title: 'Ring',
+                          selected: tempTheme == TimerThemeType.ring,
+                          onTap: () {
+                            setLocal(() => tempTheme = TimerThemeType.ring);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ThemeChoiceCard(
+                          title: 'Hourglass',
+                          selected: tempTheme == TimerThemeType.hourglass,
+                          onTap: () {
+                            setLocal(
+                                () => tempTheme = TimerThemeType.hourglass);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  AppButton(
+                    label: 'Save Settings',
+                    color: AppColors.blue,
+                    onTap: () => Navigator.pop(context, true),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == true) {
+      final newFocus = int.tryParse(focusController.text.trim()) ?? focusMinutes;
+      final newBreak = int.tryParse(breakController.text.trim()) ?? breakMinutes;
+
+      setState(() {
+        focusMinutes = newFocus <= 0 ? 25 : newFocus;
+        breakMinutes = newBreak <= 0 ? 5 : newBreak;
+        theme = tempTheme;
+        isRunning = false;
+        isBreakMode = false;
+        remainingSeconds = focusMinutes * 60;
+      });
+      timer?.cancel();
+      await persistStats();
+    }
   }
 
   @override
@@ -1070,6 +1270,12 @@ class _TimerScreenState extends State<TimerScreen> {
   Widget build(BuildContext context) {
     return AppPage(
       title: 'Timer',
+      actions: [
+        IconButton(
+          onPressed: openSettings,
+          icon: const Icon(Icons.tune_rounded, color: Colors.white),
+        ),
+      ],
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
@@ -1078,73 +1284,42 @@ class _TimerScreenState extends State<TimerScreen> {
             decoration: premiumCardDecoration(),
             child: Column(
               children: [
-                SizedBox(
-                  height: 250,
-                  width: 250,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CustomPaint(
-                        size: const Size(250, 250),
-                        painter: ProgressRingPainter(
-                          progress: progress,
-                          color: ringColor,
-                        ),
-                      ),
-                      Container(
-                        height: 190,
-                        width: 190,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            colors: [
-                              ringColor.withOpacity(0.18),
-                              const Color(0xFF163255),
-                              const Color(0xFF0D1B2E),
-                            ],
-                          ),
-                        ),
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    timeLabel,
-                                    maxLines: 1,
-                                    style: const TextStyle(
-                                      color: AppColors.text,
-                                      fontSize: 44,
-                                      fontWeight: FontWeight.w800,
-                                      decoration: TextDecoration.none,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    modeLabel,
-                                    maxLines: 1,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w600,
-                                      decoration: TextDecoration.none,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                if (theme == TimerThemeType.ring)
+                  RingTimerVisual(
+                    progress: progress,
+                    color: ringColor,
+                    timeLabel: timeLabel,
+                    modeLabel: modeLabel,
+                  )
+                else
+                  HourglassTimerVisual(
+                    progress: progress,
+                    color: ringColor,
+                    timeLabel: timeLabel,
+                    modeLabel: modeLabel,
+                    isBreakMode: isBreakMode,
                   ),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    SmallInfoChip(
+                      label: 'Focus',
+                      value: '${focusMinutes}m',
+                    ),
+                    SmallInfoChip(
+                      label: 'Break',
+                      value: '${breakMinutes}m',
+                    ),
+                    SmallInfoChip(
+                      label: 'Theme',
+                      value: theme == TimerThemeType.ring
+                          ? 'Ring'
+                          : 'Hourglass',
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
                 Row(
@@ -1209,6 +1384,344 @@ class _TimerScreenState extends State<TimerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class RingTimerVisual extends StatelessWidget {
+  final double progress;
+  final Color color;
+  final String timeLabel;
+  final String modeLabel;
+
+  const RingTimerVisual({
+    super.key,
+    required this.progress,
+    required this.color,
+    required this.timeLabel,
+    required this.modeLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 250,
+      width: 250,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: const Size(250, 250),
+            painter: ProgressRingPainter(
+              progress: progress,
+              color: color,
+            ),
+          ),
+          Container(
+            height: 190,
+            width: 190,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  color.withOpacity(0.18),
+                  const Color(0xFF163255),
+                  const Color(0xFF0D1B2E),
+                ],
+              ),
+            ),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        timeLabel,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 44,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        modeLabel,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class HourglassTimerVisual extends StatelessWidget {
+  final double progress;
+  final Color color;
+  final String timeLabel;
+  final String modeLabel;
+  final bool isBreakMode;
+
+  const HourglassTimerVisual({
+    super.key,
+    required this.progress,
+    required this.color,
+    required this.timeLabel,
+    required this.modeLabel,
+    required this.isBreakMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topFill = progress;
+    final bottomFill = 1 - progress;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 250,
+            width: 220,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 150,
+                  height: 210,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: color.withOpacity(0.9), width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.25),
+                        blurRadius: 20,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    HourglassChamber(
+                      fill: topFill,
+                      color: color,
+                      upside: true,
+                    ),
+                    Container(
+                      width: 8,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    HourglassChamber(
+                      fill: bottomFill,
+                      color: color,
+                      upside: false,
+                    ),
+                  ],
+                ),
+                Positioned(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        timeLabel,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        modeLabel,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class HourglassChamber extends StatelessWidget {
+  final double fill;
+  final Color color;
+  final bool upside;
+
+  const HourglassChamber({
+    super.key,
+    required this.fill,
+    required this.color,
+    required this.upside,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipPath(
+      clipper: HourglassClipper(upside: upside),
+      child: Container(
+        width: 90,
+        height: 70,
+        color: Colors.white.withOpacity(0.03),
+        child: Align(
+          alignment: upside ? Alignment.bottomCenter : Alignment.bottomCenter,
+          child: FractionallySizedBox(
+            heightFactor: fill.clamp(0.0, 1.0),
+            widthFactor: 1,
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    color.withOpacity(0.95),
+                    color.withOpacity(0.45),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class HourglassClipper extends CustomClipper<Path> {
+  final bool upside;
+
+  HourglassClipper({required this.upside});
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    if (upside) {
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width * 0.62, size.height);
+      path.lineTo(size.width * 0.38, size.height);
+      path.close();
+    } else {
+      path.moveTo(size.width * 0.38, 0);
+      path.lineTo(size.width * 0.62, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+      path.close();
+    }
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant HourglassClipper oldClipper) {
+    return oldClipper.upside != upside;
+  }
+}
+
+class ThemeChoiceCard extends StatelessWidget {
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const ThemeChoiceCard({
+    super.key,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.blue.withOpacity(0.18)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? AppColors.blue : AppColors.border,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SmallInfoChip extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const SmallInfoChip({
+    super.key,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          color: AppColors.text,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.none,
+        ),
       ),
     );
   }
@@ -2254,10 +2767,7 @@ BoxDecoration premiumCardDecoration() {
     gradient: const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [
-        Color(0xFF162B47),
-        Color(0xFF0D1B2E),
-      ],
+      colors: [Color(0xFF162B47), Color(0xFF0D1B2E)],
     ),
     border: Border.all(color: AppColors.border),
     boxShadow: const [
