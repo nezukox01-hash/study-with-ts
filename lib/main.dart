@@ -46,6 +46,8 @@ class AppColors {
   static const Color purple = Color(0xFF7B61FF);
   static const Color green = Color(0xFF20B486);
   static const Color red = Color(0xFFE55B6B);
+  static const Color orange = Color(0xFFFF7B7B);
+  static const Color noteBlue = Color(0xFF5A8CFF);
 }
 
 class StorageKeys {
@@ -67,13 +69,11 @@ class AppNote {
     required this.date,
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'title': title,
-      'content': content,
-      'date': date,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'title': title,
+        'content': content,
+        'date': date,
+      };
 
   factory AppNote.fromMap(Map<String, dynamic> map) {
     return AppNote(
@@ -88,26 +88,36 @@ class DailyReportEntry {
   final String date;
   final int rating;
   final String summary;
+  final int studyMinutes;
+  final int completedTasks;
+  final int focusSessions;
 
   DailyReportEntry({
     required this.date,
     required this.rating,
     required this.summary,
+    required this.studyMinutes,
+    required this.completedTasks,
+    required this.focusSessions,
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'date': date,
-      'rating': rating,
-      'summary': summary,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'date': date,
+        'rating': rating,
+        'summary': summary,
+        'studyMinutes': studyMinutes,
+        'completedTasks': completedTasks,
+        'focusSessions': focusSessions,
+      };
 
   factory DailyReportEntry.fromMap(Map<String, dynamic> map) {
     return DailyReportEntry(
       date: map['date'] ?? '',
       rating: map['rating'] ?? 0,
       summary: map['summary'] ?? '',
+      studyMinutes: map['studyMinutes'] ?? 0,
+      completedTasks: map['completedTasks'] ?? 0,
+      focusSessions: map['focusSessions'] ?? 0,
     );
   }
 }
@@ -120,6 +130,17 @@ class TimerStats {
     required this.completedFocusSessions,
     required this.totalStudyMinutes,
   });
+
+  TimerStats copyWith({
+    int? completedFocusSessions,
+    int? totalStudyMinutes,
+  }) {
+    return TimerStats(
+      completedFocusSessions:
+          completedFocusSessions ?? this.completedFocusSessions,
+      totalStudyMinutes: totalStudyMinutes ?? this.totalStudyMinutes,
+    );
+  }
 }
 
 class AppLoader extends StatefulWidget {
@@ -131,7 +152,6 @@ class AppLoader extends StatefulWidget {
 
 class _AppLoaderState extends State<AppLoader> {
   bool isLoading = true;
-
   List<AppNote> personalNotes = [];
   List<AppNote> studyNotes = [];
   List<DailyReportEntry> reportHistory = [];
@@ -157,8 +177,7 @@ class _AppLoaderState extends State<AppLoader> {
         ? <AppNote>[
             AppNote(
               title: 'Personal Note',
-              content:
-                  'Today I stayed more focused in the afternoon. I need to reduce phone distraction at night.',
+              content: 'Today I need to stay away from distractions.',
               date: todayLabel(),
             ),
           ]
@@ -169,9 +188,8 @@ class _AppLoaderState extends State<AppLoader> {
     final loadedStudy = studyRaw == null
         ? <AppNote>[
             AppNote(
-              title: 'History Notes',
-              content:
-                  'Chapter 3 needs revision. Focus on key events and dates before the next session.',
+              title: 'Study Note',
+              content: 'Revise chapter 3 and math formulas.',
               date: todayLabel(),
             ),
           ]
@@ -184,12 +202,15 @@ class _AppLoaderState extends State<AppLoader> {
             DailyReportEntry(
               date: todayLabel(),
               rating: 6,
-              summary:
-                  'Feeling good! Completed most of my tasks and made solid progress today.',
+              summary: 'Good progress today.',
+              studyMinutes: 0,
+              completedTasks: 4,
+              focusSessions: 0,
             ),
           ]
         : (jsonDecode(reportRaw) as List)
-            .map((e) => DailyReportEntry.fromMap(Map<String, dynamic>.from(e)))
+            .map((e) =>
+                DailyReportEntry.fromMap(Map<String, dynamic>.from(e)))
             .toList();
 
     final completedSessions =
@@ -258,13 +279,11 @@ class _AppLoaderState extends State<AppLoader> {
     if (isLoading) {
       return const Scaffold(
         backgroundColor: AppColors.bg,
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return MainScreen(
+    return MainShell(
       personalNotes: personalNotes,
       studyNotes: studyNotes,
       reportHistory: reportHistory,
@@ -277,18 +296,17 @@ class _AppLoaderState extends State<AppLoader> {
   }
 }
 
-class MainScreen extends StatefulWidget {
+class MainShell extends StatefulWidget {
   final List<AppNote> personalNotes;
   final List<AppNote> studyNotes;
   final List<DailyReportEntry> reportHistory;
   final TimerStats timerStats;
-
   final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
   final Future<void> Function(List<AppNote>) onStudyNotesChanged;
   final Future<void> Function(List<DailyReportEntry>) onReportHistoryChanged;
   final Future<void> Function(TimerStats) onTimerStatsChanged;
 
-  const MainScreen({
+  const MainShell({
     super.key,
     required this.personalNotes,
     required this.studyNotes,
@@ -301,11 +319,11 @@ class MainScreen extends StatefulWidget {
   });
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<MainShell> createState() => _MainShellState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  int selectedIndex = 0;
+class _MainShellState extends State<MainShell> {
+  int selectedIndex = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -313,20 +331,31 @@ class _MainScreenState extends State<MainScreen> {
         widget.reportHistory.isNotEmpty ? widget.reportHistory.first : null;
 
     final pages = [
+      TimerScreen(
+        initialStats: widget.timerStats,
+        onStatsChanged: (stats) async {
+          await widget.onTimerStatsChanged(stats);
+          setState(() {});
+        },
+      ),
+      StatsPage(
+        reportHistory: widget.reportHistory,
+        timerStats: widget.timerStats,
+      ),
       HomeScreen(
         personalNotes: widget.personalNotes,
         studyNotes: widget.studyNotes,
         latestReport: latestReport,
         timerStats: widget.timerStats,
+        reportHistory: widget.reportHistory,
         onPersonalNotesChanged: widget.onPersonalNotesChanged,
         onStudyNotesChanged: widget.onStudyNotesChanged,
         onReportHistoryChanged: widget.onReportHistoryChanged,
         onTimerStatsChanged: widget.onTimerStatsChanged,
-        reportHistory: widget.reportHistory,
       ),
-      const ReminderScreen(),
       DailyReportScreen(
         reportHistory: widget.reportHistory,
+        timerStats: widget.timerStats,
         onSaveHistory: (reports) async {
           await widget.onReportHistoryChanged(reports);
           setState(() {});
@@ -348,35 +377,155 @@ class _MainScreenState extends State<MainScreen> {
 
     return Scaffold(
       body: pages[selectedIndex],
-      bottomNavigationBar: NavigationBar(
-        height: 72,
-        backgroundColor: AppColors.surface2,
-        indicatorColor: Colors.blue.withOpacity(0.20),
+      bottomNavigationBar: CustomBottomNav(
         selectedIndex: selectedIndex,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (index) {
-          setState(() {
-            selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
+        onSelect: (index) => setState(() => selectedIndex = index),
+      ),
+    );
+  }
+}
+
+class CustomBottomNav extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  const CustomBottomNav({
+    super.key,
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 92,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            top: 12,
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  NavItem(
+                    icon: Icons.timer_rounded,
+                    label: 'Timer',
+                    selected: selectedIndex == 0,
+                    onTap: () => onSelect(0),
+                  ),
+                  NavItem(
+                    icon: Icons.analytics_rounded,
+                    label: 'Stats',
+                    selected: selectedIndex == 1,
+                    onTap: () => onSelect(1),
+                  ),
+                  const SizedBox(width: 70),
+                  NavItem(
+                    icon: Icons.star_rounded,
+                    label: 'Daily Report',
+                    selected: selectedIndex == 3,
+                    onTap: () => onSelect(3),
+                  ),
+                  NavItem(
+                    icon: Icons.sticky_note_2_rounded,
+                    label: 'Notes',
+                    selected: selectedIndex == 4,
+                    onTap: () => onSelect(4),
+                  ),
+                ],
+              ),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.notifications_active_rounded),
-            label: 'Reminder',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.star_rounded),
-            label: 'Daily Report',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.sticky_note_2_rounded),
-            label: 'Notes',
+          Positioned(
+            top: -6,
+            child: GestureDetector(
+              onTap: () => onSelect(2),
+              child: Container(
+                height: 68,
+                width: 68,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF34D8FF),
+                      Color(0xFF2E7DFF),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF34D8FF).withOpacity(0.55),
+                      blurRadius: 22,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                  border: Border.all(color: Colors.white24, width: 1.5),
+                ),
+                child: const Icon(Icons.home_rounded,
+                    color: Colors.white, size: 30),
+              ),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const NavItem({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? Colors.white : Colors.white54;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 72,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -445,7 +594,6 @@ class HomeScreen extends StatelessWidget {
   final DailyReportEntry? latestReport;
   final TimerStats timerStats;
   final List<DailyReportEntry> reportHistory;
-
   final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
   final Future<void> Function(List<AppNote>) onStudyNotesChanged;
   final Future<void> Function(List<DailyReportEntry>) onReportHistoryChanged;
@@ -464,80 +612,22 @@ class HomeScreen extends StatelessWidget {
     required this.onTimerStatsChanged,
   });
 
-  void _openPage(BuildContext context, Widget page) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => page),
-    );
+  void open(BuildContext context, Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
   @override
   Widget build(BuildContext context) {
     final todayRating = latestReport?.rating ?? 0;
     final todaySummary = latestReport?.summary ?? 'No summary yet.';
-    final totalStudy = formatMinutes(timerStats.totalStudyMinutes);
-
     return AppPage(
       title: 'Home',
       actions: const [
         Icon(Icons.notifications_none_rounded, color: Colors.white),
       ],
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: premiumCardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Study with TS',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Stay focused and finish today strong.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 14,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.07),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.bolt_rounded, color: AppColors.gold),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Today rating: $todayRating/10 · Personal notes: ${personalNotes.length} · Study notes: ${studyNotes.length}',
-                          style: const TextStyle(
-                            color: AppColors.text,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
           GridView.count(
             crossAxisCount: 2,
             crossAxisSpacing: 14,
@@ -547,25 +637,11 @@ class HomeScreen extends StatelessWidget {
             childAspectRatio: 1.02,
             children: [
               HomeFeatureCard(
-                title: 'Reminder',
-                subtitle: 'Tasks and assistant',
-                icon: Icons.notifications_active_rounded,
-                color: const Color(0xFFFF7B7B),
-                onTap: () => _openPage(context, const ReminderScreen()),
-              ),
-              HomeFeatureCard(
-                title: 'Motivation',
-                subtitle: 'Quotes and goals',
-                icon: Icons.auto_awesome_rounded,
-                color: const Color(0xFF7B61FF),
-                onTap: () => _openPage(context, const MotivationScreen()),
-              ),
-              HomeFeatureCard(
                 title: 'Timer',
-                subtitle: 'Working pomodoro',
+                subtitle: '25 / 5 focus',
                 icon: Icons.timer_rounded,
-                color: const Color(0xFF4A8BFF),
-                onTap: () => _openPage(
+                color: AppColors.blue,
+                onTap: () => open(
                   context,
                   TimerScreen(
                     initialStats: timerStats,
@@ -574,37 +650,52 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               HomeFeatureCard(
+                title: 'Reminder',
+                subtitle: 'Tasks and assistant',
+                icon: Icons.notifications_active_rounded,
+                color: AppColors.orange,
+                onTap: () => open(context, const ReminderScreen()),
+              ),
+              HomeFeatureCard(
                 title: 'Daily Tasks',
                 subtitle: 'Your task list',
                 icon: Icons.check_circle_rounded,
-                color: const Color(0xFF20B486),
-                onTap: () => _openPage(context, const DailyTasksScreen()),
+                color: AppColors.green,
+                onTap: () => open(context, const DailyTasksScreen()),
+              ),
+              HomeFeatureCard(
+                title: 'Motivation',
+                subtitle: 'Quotes and goals',
+                icon: Icons.auto_awesome_rounded,
+                color: AppColors.purple,
+                onTap: () => open(context, const MotivationScreen()),
+              ),
+              HomeFeatureCard(
+                title: 'Daily Report',
+                subtitle: 'Save and review',
+                icon: Icons.star_rounded,
+                color: AppColors.gold,
+                onTap: () => open(
+                  context,
+                  DailyReportScreen(
+                    reportHistory: reportHistory,
+                    timerStats: timerStats,
+                    onSaveHistory: onReportHistoryChanged,
+                  ),
+                ),
               ),
               HomeFeatureCard(
                 title: 'Notes',
                 subtitle: 'Personal and study',
                 icon: Icons.sticky_note_2_rounded,
-                color: const Color(0xFF5A8CFF),
-                onTap: () => _openPage(
+                color: AppColors.noteBlue,
+                onTap: () => open(
                   context,
                   NotesMainScreen(
                     personalNotes: personalNotes,
                     studyNotes: studyNotes,
                     onPersonalNotesChanged: onPersonalNotesChanged,
                     onStudyNotesChanged: onStudyNotesChanged,
-                  ),
-                ),
-              ),
-              HomeFeatureCard(
-                title: 'Daily Report',
-                subtitle: 'Save and history',
-                icon: Icons.star_rounded,
-                color: const Color(0xFFFFB84D),
-                onTap: () => _openPage(
-                  context,
-                  DailyReportScreen(
-                    reportHistory: reportHistory,
-                    onSaveHistory: onReportHistoryChanged,
                   ),
                 ),
               ),
@@ -618,7 +709,7 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Summary',
+                  'Today Summary',
                   style: TextStyle(
                     color: AppColors.text,
                     fontSize: 20,
@@ -628,9 +719,9 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 SummaryRow(
-                  icon: Icons.timer_rounded,
-                  label: 'Total Study Time',
-                  value: totalStudy,
+                  icon: Icons.star_rounded,
+                  label: 'Today Rating',
+                  value: '$todayRating/10',
                 ),
                 const SizedBox(height: 12),
                 SummaryRow(
@@ -640,21 +731,23 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 SummaryRow(
-                  icon: Icons.star_rounded,
-                  label: 'Today Rating',
-                  value: '$todayRating/10',
+                  icon: Icons.timer_rounded,
+                  label: 'Total Study Time',
+                  value: formatMinutes(timerStats.totalStudyMinutes),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'Today Summary',
-                  style: const TextStyle(
-                    color: AppColors.text,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    decoration: TextDecoration.none,
-                  ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.notes_rounded,
+                  label: 'Personal Notes',
+                  value: '${personalNotes.length}',
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.menu_book_rounded,
+                  label: 'Study Notes',
+                  value: '${studyNotes.length}',
+                ),
+                const SizedBox(height: 16),
                 Text(
                   todaySummary,
                   maxLines: 3,
@@ -710,10 +803,7 @@ class HomeFeatureCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
-                      colors: [
-                        color,
-                        color.withOpacity(0.55),
-                      ],
+                      colors: [color, color.withOpacity(0.55)],
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -771,50 +861,25 @@ class ReminderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppPage(
       title: 'Reminder',
-      actions: const [
-        Icon(Icons.notifications_none_rounded, color: Colors.white),
-      ],
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        children: [
-          ReminderMenuCard(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: const [
+          ReminderMenuCardStatic(
             title: 'To-Do Reminder',
             subtitle: 'Create reminders for tasks and deadlines.',
             icon: Icons.checklist_rounded,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TodoReminderScreen()),
-              );
-            },
           ),
-          const SizedBox(height: 14),
-          ReminderMenuCard(
+          SizedBox(height: 14),
+          ReminderMenuCardStatic(
             title: 'Assistant Reminder',
             subtitle: 'Check-in prompts and focus messages.',
             icon: Icons.smart_toy_rounded,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AssistantReminderScreen(),
-                ),
-              );
-            },
           ),
-          const SizedBox(height: 14),
-          ReminderMenuCard(
+          SizedBox(height: 14),
+          ReminderMenuCardStatic(
             title: 'Session Reminder',
             subtitle: 'Morning, afternoon, and evening sessions.',
             icon: Icons.schedule_rounded,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SessionReminderScreen(),
-                ),
-              );
-            },
           ),
         ],
       ),
@@ -822,144 +887,62 @@ class ReminderScreen extends StatelessWidget {
   }
 }
 
-class ReminderMenuCard extends StatelessWidget {
+class ReminderMenuCardStatic extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
-  final VoidCallback onTap;
 
-  const ReminderMenuCard({
+  const ReminderMenuCardStatic({
     super.key,
     required this.title,
     required this.subtitle,
     required this.icon,
-    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
-        child: Ink(
-          decoration: premiumCardDecoration(),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
+    return Container(
+      decoration: premiumCardDecoration(),
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        children: [
+          Container(
+            height: 52,
+            width: 52,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
+                colors: [AppColors.blue, AppColors.purple],
+              ),
+            ),
+            child: Icon(icon, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  height: 52,
-                  width: 52,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF4A8BFF),
-                        Color(0xFF7B61FF),
-                      ],
-                    ),
-                  ),
-                  child: Icon(icon, color: Colors.white),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 13,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ],
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.muted,
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 13,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class TodoReminderScreen extends StatelessWidget {
-  const TodoReminderScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const DetailPage(
-      title: 'To-Do Reminder',
-      child: Column(
-        children: [
-          ReminderEntryCard(title: 'Finish Math Chapter', value: '10:30 AM'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'Read History Notes', value: '02:00 PM'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'Complete Science Quiz', value: '05:30 PM'),
-        ],
-      ),
-    );
-  }
-}
-
-class AssistantReminderScreen extends StatelessWidget {
-  const AssistantReminderScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const DetailPage(
-      title: 'Assistant Reminder',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InfoBox(title: 'Check-In Interval', value: 'Every 2 Hours'),
-          SizedBox(height: 14),
-          InfoBox(title: 'Mode', value: 'Friendly'),
-          SizedBox(height: 14),
-          LargeTextBox(
-            title: 'Reminder Message',
-            content: 'How is your study going? Stay focused!',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class SessionReminderScreen extends StatelessWidget {
-  const SessionReminderScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const DetailPage(
-      title: 'Session Reminder',
-      child: Column(
-        children: [
-          ReminderEntryCard(title: 'Morning Session', value: '8:00 AM - 12:00 PM'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'Afternoon Session', value: '2:00 PM - 4:00 PM'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'Evening Session', value: '6:00 PM - 11:00 PM'),
         ],
       ),
     );
@@ -971,11 +954,11 @@ class MotivationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DetailPage(
+    return AppPage(
       title: 'Motivation',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: const [
           LargeTextBox(
             title: 'Today Quote',
             content:
@@ -984,8 +967,31 @@ class MotivationScreen extends StatelessWidget {
           SizedBox(height: 14),
           InfoBox(
             title: 'Today Goal',
-            value: 'Study for 4 hours and complete 5 tasks',
+            value: 'Study for 4 hours and complete your important tasks.',
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class DailyTasksScreen extends StatelessWidget {
+  const DailyTasksScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppPage(
+      title: 'Daily Tasks',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: const [
+          ReminderEntryCard(title: 'Math Practice', value: 'Pending'),
+          SizedBox(height: 12),
+          ReminderEntryCard(title: 'Physics Chapter 2', value: 'Pending'),
+          SizedBox(height: 12),
+          ReminderEntryCard(title: 'English Essay', value: 'Done'),
+          SizedBox(height: 12),
+          ReminderEntryCard(title: 'History Revision', value: 'Done'),
         ],
       ),
     );
@@ -1027,11 +1033,8 @@ class _TimerScreenState extends State<TimerScreen> {
   }
 
   int get totalCurrentModeSeconds => isBreakMode ? breakSeconds : focusSeconds;
-
   double get progress => remainingSeconds / totalCurrentModeSeconds;
-
   Color get ringColor => isBreakMode ? AppColors.red : AppColors.green;
-
   String get modeLabel => isBreakMode ? 'Break Timer' : 'Pomodoro Timer';
 
   String get timeLabel {
@@ -1051,9 +1054,7 @@ class _TimerScreenState extends State<TimerScreen> {
 
   void startTimer() {
     if (isRunning) return;
-    setState(() {
-      isRunning = true;
-    });
+    setState(() => isRunning = true);
 
     timer = Timer.periodic(const Duration(seconds: 1), (t) async {
       if (remainingSeconds <= 1) {
@@ -1076,18 +1077,14 @@ class _TimerScreenState extends State<TimerScreen> {
           });
         }
       } else {
-        setState(() {
-          remainingSeconds--;
-        });
+        setState(() => remainingSeconds--);
       }
     });
   }
 
   void pauseTimer() {
     timer?.cancel();
-    setState(() {
-      isRunning = false;
-    });
+    setState(() => isRunning = false);
   }
 
   void resetTimer() {
@@ -1109,11 +1106,8 @@ class _TimerScreenState extends State<TimerScreen> {
   Widget build(BuildContext context) {
     return AppPage(
       title: 'Timer',
-      actions: const [
-        Icon(Icons.tune_rounded, color: Colors.white),
-      ],
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
           Container(
             padding: const EdgeInsets.all(20),
@@ -1288,7 +1282,6 @@ class ProgressRingPainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
     const startAngle = -math.pi / 2;
     final sweepAngle = 2 * math.pi * progress;
-
     canvas.drawArc(rect, startAngle, sweepAngle, false, progressPaint);
   }
 
@@ -1298,33 +1291,15 @@ class ProgressRingPainter extends CustomPainter {
   }
 }
 
-class DailyTasksScreen extends StatelessWidget {
-  const DailyTasksScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const DetailPage(
-      title: 'Daily Tasks',
-      child: Column(
-        children: [
-          ReminderEntryCard(title: 'Math Practice', value: 'Pending'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'Physics Chapter 2', value: 'Pending'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'English Essay', value: 'Done'),
-        ],
-      ),
-    );
-  }
-}
-
 class DailyReportScreen extends StatefulWidget {
   final List<DailyReportEntry> reportHistory;
+  final TimerStats timerStats;
   final Future<void> Function(List<DailyReportEntry>) onSaveHistory;
 
   const DailyReportScreen({
     super.key,
     required this.reportHistory,
+    required this.timerStats,
     required this.onSaveHistory,
   });
 
@@ -1360,6 +1335,9 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
       date: today,
       rating: rating,
       summary: summaryController.text.trim(),
+      studyMinutes: widget.timerStats.totalStudyMinutes,
+      completedTasks: 4,
+      focusSessions: widget.timerStats.completedFocusSessions,
     );
 
     final updated = List<DailyReportEntry>.from(history);
@@ -1371,12 +1349,7 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
       updated.insert(0, newEntry);
     }
 
-    updated.sort((a, b) => b.date.compareTo(a.date));
-
-    setState(() {
-      history = updated;
-    });
-
+    setState(() => history = updated);
     await widget.onSaveHistory(updated);
 
     if (!mounted) return;
@@ -1399,39 +1372,8 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
         Icon(Icons.edit_note_rounded, color: Colors.white),
       ],
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: premiumCardDecoration(),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Today\'s Stats',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                SizedBox(height: 14),
-                SummaryRow(
-                  icon: Icons.menu_book_rounded,
-                  label: 'Study Time',
-                  value: '3 hrs 15 mins',
-                ),
-                SizedBox(height: 12),
-                SummaryRow(
-                  icon: Icons.task_alt_rounded,
-                  label: 'Tasks Completed',
-                  value: '4 / 5',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(18),
             decoration: premiumCardDecoration(),
@@ -1454,11 +1396,7 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
                   children: List.generate(10, (index) {
                     final starNumber = index + 1;
                     return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          rating = starNumber;
-                        });
-                      },
+                      onTap: () => setState(() => rating = starNumber),
                       child: Icon(
                         Icons.star_rounded,
                         color: starNumber <= rating
@@ -1477,29 +1415,10 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
                     decoration: TextDecoration.none,
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: premiumCardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Daily Summary',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
                 const SizedBox(height: 14),
                 TextField(
                   controller: summaryController,
-                  maxLines: 6,
+                  maxLines: 5,
                   style: const TextStyle(
                     color: AppColors.text,
                     decoration: TextDecoration.none,
@@ -1588,11 +1507,183 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
                                 decoration: TextDecoration.none,
                               ),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Study Time: ${formatMinutes(entry.studyMinutes)}',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tasks Done: ${entry.completedTasks}',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Focus Sessions: ${entry.focusSessions}',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               entry.summary.isEmpty
                                   ? 'No summary written.'
                                   : entry.summary,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                height: 1.4,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StatsPage extends StatelessWidget {
+  final List<DailyReportEntry> reportHistory;
+  final TimerStats timerStats;
+
+  const StatsPage({
+    super.key,
+    required this.reportHistory,
+    required this.timerStats,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppPage(
+      title: 'Stats',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: premiumCardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Overview',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SummaryRow(
+                  icon: Icons.repeat_rounded,
+                  label: 'Focus Sessions',
+                  value: '${timerStats.completedFocusSessions}',
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.timer_rounded,
+                  label: 'Total Study Time',
+                  value: formatMinutes(timerStats.totalStudyMinutes),
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.history_rounded,
+                  label: 'Saved Reports',
+                  value: '${reportHistory.length}',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: premiumCardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Daily Logs',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (reportHistory.isEmpty)
+                  const Text(
+                    'No logs yet.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      decoration: TextDecoration.none,
+                    ),
+                  )
+                else
+                  ...reportHistory.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.date,
+                              style: const TextStyle(
+                                color: AppColors.text,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Study Time: ${formatMinutes(entry.studyMinutes)}',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tasks Done: ${entry.completedTasks}',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Rating: ${entry.rating}/10',
+                              style: const TextStyle(
+                                color: AppColors.gold,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              entry.summary,
                               style: const TextStyle(
                                 color: AppColors.muted,
                                 height: 1.4,
@@ -1635,9 +1726,9 @@ class NotesMainScreen extends StatelessWidget {
         Icon(Icons.add_rounded, color: Colors.white),
       ],
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          ReminderMenuCard(
+          NotesMenuCard(
             title: 'Personal Notes',
             subtitle: 'Daily personal notes saved by date.',
             icon: Icons.person_rounded,
@@ -1657,7 +1748,7 @@ class NotesMainScreen extends StatelessWidget {
             },
           ),
           const SizedBox(height: 14),
-          ReminderMenuCard(
+          NotesMenuCard(
             title: 'Study Notes',
             subtitle: 'Subject and topic notes saved by date.',
             icon: Icons.menu_book_rounded,
@@ -1677,6 +1768,80 @@ class NotesMainScreen extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class NotesMenuCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const NotesMenuCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Ink(
+          decoration: premiumCardDecoration(),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Container(
+                  height: 52,
+                  width: 52,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: const LinearGradient(
+                      colors: [AppColors.noteBlue, AppColors.blue],
+                    ),
+                  ),
+                  child: Icon(icon, color: Colors.white),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 13,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1771,24 +1936,18 @@ class _NotesListScreenState extends State<NotesListScreen> {
         date: todayLabel(),
       );
 
-      setState(() {
-        notes.insert(0, newNote);
-      });
-
+      setState(() => notes.insert(0, newNote));
       await widget.onSave(notes);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Note saved')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Note saved')));
     }
   }
 
   Future<void> deleteNote(int index) async {
     final updated = List<AppNote>.from(notes)..removeAt(index);
-    setState(() {
-      notes = updated;
-    });
+    setState(() => notes = updated);
     await widget.onSave(notes);
   }
 
@@ -1813,7 +1972,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
               ),
             )
           : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               itemCount: notes.length,
               separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (_, index) {
@@ -1892,68 +2051,6 @@ class NoteCard extends StatelessWidget {
                 fontSize: 15,
                 height: 1.5,
                 decoration: TextDecoration.none,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class DetailPage extends StatelessWidget {
-  final String title;
-  final Widget child;
-
-  const DetailPage({
-    super.key,
-    required this.title,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF10284A),
-            Color(0xFF071120),
-          ],
-        ),
-      ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 16, 20, 10),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                  ),
-                  Expanded(
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.text,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                children: [child],
               ),
             ),
           ],
