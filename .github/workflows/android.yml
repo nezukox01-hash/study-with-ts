@@ -1,9 +1,9 @@
 name: Build Flutter APK
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -13,28 +13,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.22.2"
+          flutter-version: '3.22.0'
 
-      - name: Create Flutter project
+      - name: Create temp Flutter project
         run: flutter create temp_app
 
-      - name: Copy your code
+      - name: Copy your code into project
         run: |
           rm -rf temp_app/lib
           cp -r lib temp_app/
-          cp pubspec.yaml temp_app/
 
-      - name: Build APK
+          cp pubspec.yaml temp_app/pubspec.yaml
+
+      - name: Install dependencies
         run: |
           cd temp_app
           flutter pub get
-          flutter build apk --debug
+
+      - name: Build RELEASE APK
+        run: |
+          cd temp_app
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: study-with-ts-apk
-          path: temp_app/build/app/outputs/flutter-apk/app-debug.apk
+          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
