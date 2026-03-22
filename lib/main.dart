@@ -130,17 +130,6 @@ class TimerStats {
     required this.completedFocusSessions,
     required this.totalStudyMinutes,
   });
-
-  TimerStats copyWith({
-    int? completedFocusSessions,
-    int? totalStudyMinutes,
-  }) {
-    return TimerStats(
-      completedFocusSessions:
-          completedFocusSessions ?? this.completedFocusSessions,
-      totalStudyMinutes: totalStudyMinutes ?? this.totalStudyMinutes,
-    );
-  }
 }
 
 class AppLoader extends StatefulWidget {
@@ -636,9 +625,8 @@ class HomeScreen extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             childAspectRatio: 1.02,
             children: [
-              HomeFeatureCard(
+              HomeMinimalCard(
                 title: 'Timer',
-                subtitle: '25 / 5 focus',
                 icon: Icons.timer_rounded,
                 color: AppColors.blue,
                 onTap: () => open(
@@ -649,30 +637,26 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              HomeFeatureCard(
+              HomeMinimalCard(
                 title: 'Reminder',
-                subtitle: 'Tasks and assistant',
                 icon: Icons.notifications_active_rounded,
                 color: AppColors.orange,
                 onTap: () => open(context, const ReminderScreen()),
               ),
-              HomeFeatureCard(
+              HomeMinimalCard(
                 title: 'Daily Tasks',
-                subtitle: 'Your task list',
                 icon: Icons.check_circle_rounded,
                 color: AppColors.green,
                 onTap: () => open(context, const DailyTasksScreen()),
               ),
-              HomeFeatureCard(
+              HomeMinimalCard(
                 title: 'Motivation',
-                subtitle: 'Quotes and goals',
                 icon: Icons.auto_awesome_rounded,
                 color: AppColors.purple,
                 onTap: () => open(context, const MotivationScreen()),
               ),
-              HomeFeatureCard(
+              HomeMinimalCard(
                 title: 'Daily Report',
-                subtitle: 'Save and review',
                 icon: Icons.star_rounded,
                 color: AppColors.gold,
                 onTap: () => open(
@@ -684,9 +668,8 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              HomeFeatureCard(
+              HomeMinimalCard(
                 title: 'Notes',
-                subtitle: 'Personal and study',
                 icon: Icons.sticky_note_2_rounded,
                 color: AppColors.noteBlue,
                 onTap: () => open(
@@ -767,17 +750,15 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class HomeFeatureCard extends StatelessWidget {
+class HomeMinimalCard extends StatelessWidget {
   final String title;
-  final String subtitle;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
-  const HomeFeatureCard({
+  const HomeMinimalCard({
     super.key,
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.color,
     required this.onTap,
@@ -795,11 +776,11 @@ class HomeFeatureCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  height: 48,
-                  width: 48,
+                  height: 58,
+                  width: 58,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
@@ -815,34 +796,17 @@ class HomeFeatureCard extends StatelessWidget {
                   ),
                   child: Icon(icon, color: Colors.white),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 Text(
                   title,
+                  textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.text,
-                    fontSize: 18,
+                    fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    height: 1.15,
                     decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 13,
-                        height: 1.2,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
                   ),
                 ),
               ],
