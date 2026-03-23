@@ -2,7 +2,7 @@ name: study_with_ts
 description: A modern study productivity app with timer, notes, reports, and stats.
 publish_to: 'none'
 
-version: 1.0.0.1
+version: 1.0.0+1
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
