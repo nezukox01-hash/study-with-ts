@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1118,6 +1119,8 @@ class _TimerScreenState extends State<TimerScreen> with WidgetsBindingObserver {
   late int totalStudyMinutes;
   late int lastUpdatedEpoch;
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   @override
   void initState() {
     super.initState();
@@ -1142,6 +1145,7 @@ class _TimerScreenState extends State<TimerScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
+    _audioPlayer.dispose();
     persistStats();
     super.dispose();
   }
@@ -1173,6 +1177,16 @@ class _TimerScreenState extends State<TimerScreen> with WidgetsBindingObserver {
     final minutes = remainingSeconds ~/ 60;
     final seconds = remainingSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> playSound(bool breakEnded) async {
+    try {
+      if (breakEnded) {
+        await _audioPlayer.play(AssetSource('sounds/break_end.mp3'));
+      } else {
+        await _audioPlayer.play(AssetSource('sounds/focus_end.mp3'));
+      }
+    } catch (_) {}
   }
 
   TimerStats buildStats() {
@@ -1237,11 +1251,13 @@ class _TimerScreenState extends State<TimerScreen> with WidgetsBindingObserver {
 
       if (remainingSeconds <= 1) {
         if (!isBreakMode) {
+          await playSound(false);
           completedFocusSessions += 1;
           totalStudyMinutes += focusMinutes;
           isBreakMode = true;
           remainingSeconds = breakMinutes * 60;
         } else {
+          await playSound(true);
           isBreakMode = false;
           remainingSeconds = focusMinutes * 60;
         }
