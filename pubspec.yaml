@@ -22,5 +22,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/sounds/break_end.mp3  
     - assets/sounds/focus_end.mp3
-    - assets/sounds/break_end.mp3
+    
