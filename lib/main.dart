@@ -58,6 +58,10 @@ class StorageKeys {
   static const String timerTotalStudyMinutes = 'timer_total_study_minutes';
   static const String timerFocusMinutes = 'timer_focus_minutes';
   static const String timerBreakMinutes = 'timer_break_minutes';
+  static const String timerRemainingSeconds = 'timer_remaining_seconds';
+  static const String timerIsBreakMode = 'timer_is_break_mode';
+  static const String timerIsRunning = 'timer_is_running';
+  static const String timerLastUpdatedEpoch = 'timer_last_updated_epoch';
 }
 
 class AppNote {
@@ -129,12 +133,20 @@ class TimerStats {
   final int totalStudyMinutes;
   final int focusMinutes;
   final int breakMinutes;
+  final int remainingSeconds;
+  final bool isBreakMode;
+  final bool isRunning;
+  final int lastUpdatedEpoch;
 
   const TimerStats({
     required this.completedFocusSessions,
     required this.totalStudyMinutes,
     required this.focusMinutes,
     required this.breakMinutes,
+    required this.remainingSeconds,
+    required this.isBreakMode,
+    required this.isRunning,
+    required this.lastUpdatedEpoch,
   });
 
   TimerStats copyWith({
@@ -142,6 +154,10 @@ class TimerStats {
     int? totalStudyMinutes,
     int? focusMinutes,
     int? breakMinutes,
+    int? remainingSeconds,
+    bool? isBreakMode,
+    bool? isRunning,
+    int? lastUpdatedEpoch,
   }) {
     return TimerStats(
       completedFocusSessions:
@@ -149,6 +165,10 @@ class TimerStats {
       totalStudyMinutes: totalStudyMinutes ?? this.totalStudyMinutes,
       focusMinutes: focusMinutes ?? this.focusMinutes,
       breakMinutes: breakMinutes ?? this.breakMinutes,
+      remainingSeconds: remainingSeconds ?? this.remainingSeconds,
+      isBreakMode: isBreakMode ?? this.isBreakMode,
+      isRunning: isRunning ?? this.isRunning,
+      lastUpdatedEpoch: lastUpdatedEpoch ?? this.lastUpdatedEpoch,
     );
   }
 }
@@ -170,12 +190,60 @@ class _AppLoaderState extends State<AppLoader> {
     totalStudyMinutes: 0,
     focusMinutes: 25,
     breakMinutes: 5,
+    remainingSeconds: 25 * 60,
+    isBreakMode: false,
+    isRunning: false,
+    lastUpdatedEpoch: 0,
   );
 
   @override
   void initState() {
     super.initState();
     loadAll();
+  }
+
+  TimerStats applyElapsedToTimer(TimerStats stats) {
+    if (!stats.isRunning || stats.lastUpdatedEpoch == 0) return stats;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final elapsedSeconds =
+        ((now - stats.lastUpdatedEpoch) / 1000).floor().clamp(0, 999999);
+
+    int remaining = stats.remainingSeconds;
+    bool isBreak = stats.isBreakMode;
+    int completed = stats.completedFocusSessions;
+    int totalMinutes = stats.totalStudyMinutes;
+    final focusSec = stats.focusMinutes * 60;
+    final breakSec = stats.breakMinutes * 60;
+
+    int left = elapsedSeconds;
+
+    while (left > 0) {
+      if (left < remaining) {
+        remaining -= left;
+        left = 0;
+      } else {
+        left -= remaining;
+        if (!isBreak) {
+          completed += 1;
+          totalMinutes += stats.focusMinutes;
+          isBreak = true;
+          remaining = breakSec;
+        } else {
+          isBreak = false;
+          remaining = focusSec;
+        }
+      }
+    }
+
+    return stats.copyWith(
+      completedFocusSessions: completed,
+      totalStudyMinutes: totalMinutes,
+      remainingSeconds: remaining,
+      isBreakMode: isBreak,
+      isRunning: true,
+      lastUpdatedEpoch: now,
+    );
   }
 
   Future<void> loadAll() async {
@@ -225,23 +293,34 @@ class _AppLoaderState extends State<AppLoader> {
                 DailyReportEntry.fromMap(Map<String, dynamic>.from(e)))
             .toList();
 
-    final completedSessions =
-        prefs.getInt(StorageKeys.timerCompletedSessions) ?? 0;
-    final totalStudyMinutes =
-        prefs.getInt(StorageKeys.timerTotalStudyMinutes) ?? 0;
     final focusMinutes = prefs.getInt(StorageKeys.timerFocusMinutes) ?? 25;
     final breakMinutes = prefs.getInt(StorageKeys.timerBreakMinutes) ?? 5;
+
+    final rawStats = TimerStats(
+      completedFocusSessions:
+          prefs.getInt(StorageKeys.timerCompletedSessions) ?? 0,
+      totalStudyMinutes:
+          prefs.getInt(StorageKeys.timerTotalStudyMinutes) ?? 0,
+      focusMinutes: focusMinutes,
+      breakMinutes: breakMinutes,
+      remainingSeconds:
+          prefs.getInt(StorageKeys.timerRemainingSeconds) ?? focusMinutes * 60,
+      isBreakMode: prefs.getBool(StorageKeys.timerIsBreakMode) ?? false,
+      isRunning: prefs.getBool(StorageKeys.timerIsRunning) ?? false,
+      lastUpdatedEpoch: prefs.getInt(StorageKeys.timerLastUpdatedEpoch) ?? 0,
+    );
+
+    final hydratedStats = applyElapsedToTimer(rawStats);
+
+    if (hydratedStats != rawStats) {
+      await saveTimerStats(hydratedStats, triggerSetState: false);
+    }
 
     setState(() {
       personalNotes = loadedPersonal;
       studyNotes = loadedStudy;
       reportHistory = loadedReports;
-      timerStats = TimerStats(
-        completedFocusSessions: completedSessions,
-        totalStudyMinutes: totalStudyMinutes,
-        focusMinutes: focusMinutes,
-        breakMinutes: breakMinutes,
-      );
+      timerStats = hydratedStats;
       isLoading = false;
     });
   }
@@ -276,7 +355,10 @@ class _AppLoaderState extends State<AppLoader> {
     setState(() {});
   }
 
-  Future<void> saveTimerStats(TimerStats stats) async {
+  Future<void> saveTimerStats(
+    TimerStats stats, {
+    bool triggerSetState = true,
+  }) async {
     timerStats = stats;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(
@@ -295,7 +377,25 @@ class _AppLoaderState extends State<AppLoader> {
       StorageKeys.timerBreakMinutes,
       stats.breakMinutes,
     );
-    setState(() {});
+    await prefs.setInt(
+      StorageKeys.timerRemainingSeconds,
+      stats.remainingSeconds,
+    );
+    await prefs.setBool(
+      StorageKeys.timerIsBreakMode,
+      stats.isBreakMode,
+    );
+    await prefs.setBool(
+      StorageKeys.timerIsRunning,
+      stats.isRunning,
+    );
+    await prefs.setInt(
+      StorageKeys.timerLastUpdatedEpoch,
+      stats.lastUpdatedEpoch,
+    );
+    if (triggerSetState) {
+      setState(() {});
+    }
   }
 
   @override
@@ -1005,7 +1105,7 @@ class TimerScreen extends StatefulWidget {
   State<TimerScreen> createState() => _TimerScreenState();
 }
 
-class _TimerScreenState extends State<TimerScreen> {
+class _TimerScreenState extends State<TimerScreen> with WidgetsBindingObserver {
   late int focusMinutes;
   late int breakMinutes;
   late int remainingSeconds;
@@ -1016,15 +1116,48 @@ class _TimerScreenState extends State<TimerScreen> {
 
   late int completedFocusSessions;
   late int totalStudyMinutes;
+  late int lastUpdatedEpoch;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     focusMinutes = widget.initialStats.focusMinutes;
     breakMinutes = widget.initialStats.breakMinutes;
-    remainingSeconds = focusMinutes * 60;
+    remainingSeconds = widget.initialStats.remainingSeconds;
+    isBreakMode = widget.initialStats.isBreakMode;
+    isRunning = widget.initialStats.isRunning;
     completedFocusSessions = widget.initialStats.completedFocusSessions;
     totalStudyMinutes = widget.initialStats.totalStudyMinutes;
+    lastUpdatedEpoch = widget.initialStats.lastUpdatedEpoch;
+
+    applyElapsedIfNeeded();
+    if (isRunning) {
+      startLocalTicker();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    timer?.cancel();
+    persistStats();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      persistStats();
+      timer?.cancel();
+    } else if (state == AppLifecycleState.resumed) {
+      applyElapsedIfNeeded();
+      if (isRunning) {
+        startLocalTicker();
+      }
+    }
   }
 
   int get totalCurrentModeSeconds =>
@@ -1042,50 +1175,105 @@ class _TimerScreenState extends State<TimerScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  Future<void> persistStats() async {
-    await widget.onStatsChanged(
-      TimerStats(
-        completedFocusSessions: completedFocusSessions,
-        totalStudyMinutes: totalStudyMinutes,
-        focusMinutes: focusMinutes,
-        breakMinutes: breakMinutes,
-      ),
+  TimerStats buildStats() {
+    return TimerStats(
+      completedFocusSessions: completedFocusSessions,
+      totalStudyMinutes: totalStudyMinutes,
+      focusMinutes: focusMinutes,
+      breakMinutes: breakMinutes,
+      remainingSeconds: remainingSeconds,
+      isBreakMode: isBreakMode,
+      isRunning: isRunning,
+      lastUpdatedEpoch: lastUpdatedEpoch,
     );
   }
 
-  void startTimer() {
-    if (isRunning) return;
-    setState(() => isRunning = true);
+  Future<void> persistStats() async {
+    await widget.onStatsChanged(buildStats());
+  }
 
-    timer = Timer.periodic(const Duration(seconds: 1), (t) async {
-      if (remainingSeconds <= 1) {
-        t.cancel();
+  void applyElapsedIfNeeded() {
+    if (!isRunning || lastUpdatedEpoch == 0) return;
 
+    final now = DateTime.now().millisecondsSinceEpoch;
+    int elapsedSeconds = ((now - lastUpdatedEpoch) / 1000).floor();
+
+    if (elapsedSeconds <= 0) {
+      lastUpdatedEpoch = now;
+      return;
+    }
+
+    final focusSec = focusMinutes * 60;
+    final breakSec = breakMinutes * 60;
+
+    while (elapsedSeconds > 0) {
+      if (elapsedSeconds < remainingSeconds) {
+        remainingSeconds -= elapsedSeconds;
+        elapsedSeconds = 0;
+      } else {
+        elapsedSeconds -= remainingSeconds;
         if (!isBreakMode) {
           completedFocusSessions += 1;
           totalStudyMinutes += focusMinutes;
-          await persistStats();
-          setState(() {
-            isBreakMode = true;
-            remainingSeconds = breakMinutes * 60;
-            isRunning = false;
-          });
+          isBreakMode = true;
+          remainingSeconds = breakSec;
         } else {
-          setState(() {
-            isBreakMode = false;
-            remainingSeconds = focusMinutes * 60;
-            isRunning = false;
-          });
+          isBreakMode = false;
+          remainingSeconds = focusSec;
         }
+      }
+    }
+
+    lastUpdatedEpoch = now;
+  }
+
+  void startLocalTicker() {
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      if (!isRunning) {
+        t.cancel();
+        return;
+      }
+
+      if (remainingSeconds <= 1) {
+        if (!isBreakMode) {
+          completedFocusSessions += 1;
+          totalStudyMinutes += focusMinutes;
+          isBreakMode = true;
+          remainingSeconds = breakMinutes * 60;
+        } else {
+          isBreakMode = false;
+          remainingSeconds = focusMinutes * 60;
+        }
+        lastUpdatedEpoch = DateTime.now().millisecondsSinceEpoch;
+        setState(() {});
+        await persistStats();
       } else {
-        setState(() => remainingSeconds--);
+        setState(() {
+          remainingSeconds--;
+          lastUpdatedEpoch = DateTime.now().millisecondsSinceEpoch;
+        });
       }
     });
   }
 
+  void startTimer() {
+    if (isRunning) return;
+    setState(() {
+      isRunning = true;
+      lastUpdatedEpoch = DateTime.now().millisecondsSinceEpoch;
+    });
+    startLocalTicker();
+    persistStats();
+  }
+
   void pauseTimer() {
     timer?.cancel();
-    setState(() => isRunning = false);
+    setState(() {
+      isRunning = false;
+      lastUpdatedEpoch = DateTime.now().millisecondsSinceEpoch;
+    });
+    persistStats();
   }
 
   void resetTimer() {
@@ -1094,7 +1282,9 @@ class _TimerScreenState extends State<TimerScreen> {
       isRunning = false;
       isBreakMode = false;
       remainingSeconds = focusMinutes * 60;
+      lastUpdatedEpoch = DateTime.now().millisecondsSinceEpoch;
     });
+    persistStats();
   }
 
   Future<void> openSettings() async {
@@ -1184,22 +1374,17 @@ class _TimerScreenState extends State<TimerScreen> {
       final newFocus = int.tryParse(focusController.text.trim()) ?? focusMinutes;
       final newBreak = int.tryParse(breakController.text.trim()) ?? breakMinutes;
 
+      timer?.cancel();
       setState(() {
         focusMinutes = newFocus <= 0 ? 25 : newFocus;
         breakMinutes = newBreak <= 0 ? 5 : newBreak;
         isRunning = false;
         isBreakMode = false;
         remainingSeconds = focusMinutes * 60;
+        lastUpdatedEpoch = DateTime.now().millisecondsSinceEpoch;
       });
-      timer?.cancel();
       await persistStats();
     }
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
   }
 
   @override
