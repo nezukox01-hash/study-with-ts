@@ -54,6 +54,7 @@ class StorageKeys {
   static const String personalNotes = 'personal_notes';
   static const String studyNotes = 'study_notes';
   static const String reportHistory = 'report_history';
+  static const String tasks = 'tasks';
   static const String timerCompletedSessions = 'timer_completed_sessions';
   static const String timerTotalStudyMinutes = 'timer_total_study_minutes';
   static const String timerFocusMinutes = 'timer_focus_minutes';
@@ -85,6 +86,50 @@ class AppNote {
     return AppNote(
       title: map['title'] ?? '',
       content: map['content'] ?? '',
+      date: map['date'] ?? '',
+    );
+  }
+}
+
+class AppTask {
+  final String id;
+  final String title;
+  final bool isDone;
+  final String date;
+
+  AppTask({
+    required this.id,
+    required this.title,
+    required this.isDone,
+    required this.date,
+  });
+
+  AppTask copyWith({
+    String? id,
+    String? title,
+    bool? isDone,
+    String? date,
+  }) {
+    return AppTask(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      isDone: isDone ?? this.isDone,
+      date: date ?? this.date,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'title': title,
+        'isDone': isDone,
+        'date': date,
+      };
+
+  factory AppTask.fromMap(Map<String, dynamic> map) {
+    return AppTask(
+      id: map['id'] ?? '',
+      title: map['title'] ?? '',
+      isDone: map['isDone'] ?? false,
       date: map['date'] ?? '',
     );
   }
@@ -185,6 +230,7 @@ class _AppLoaderState extends State<AppLoader> {
   List<AppNote> personalNotes = [];
   List<AppNote> studyNotes = [];
   List<DailyReportEntry> reportHistory = [];
+  List<AppTask> tasks = [];
   TimerStats timerStats = const TimerStats(
     completedFocusSessions: 0,
     totalStudyMinutes: 0,
@@ -252,6 +298,7 @@ class _AppLoaderState extends State<AppLoader> {
     final personalRaw = prefs.getString(StorageKeys.personalNotes);
     final studyRaw = prefs.getString(StorageKeys.studyNotes);
     final reportRaw = prefs.getString(StorageKeys.reportHistory);
+    final tasksRaw = prefs.getString(StorageKeys.tasks);
 
     final loadedPersonal = personalRaw == null
         ? <AppNote>[
@@ -284,13 +331,38 @@ class _AppLoaderState extends State<AppLoader> {
               rating: 6,
               summary: 'Good progress today.',
               studyMinutes: 0,
-              completedTasks: 4,
+              completedTasks: 0,
               focusSessions: 0,
             ),
           ]
         : (jsonDecode(reportRaw) as List)
             .map((e) =>
                 DailyReportEntry.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+
+    final loadedTasks = tasksRaw == null
+        ? <AppTask>[
+            AppTask(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              title: 'Math Practice',
+              isDone: false,
+              date: todayLabel(),
+            ),
+            AppTask(
+              id: '${DateTime.now().millisecondsSinceEpoch + 1}',
+              title: 'Physics Chapter 2',
+              isDone: false,
+              date: todayLabel(),
+            ),
+            AppTask(
+              id: '${DateTime.now().millisecondsSinceEpoch + 2}',
+              title: 'English Essay',
+              isDone: true,
+              date: todayLabel(),
+            ),
+          ]
+        : (jsonDecode(tasksRaw) as List)
+            .map((e) => AppTask.fromMap(Map<String, dynamic>.from(e)))
             .toList();
 
     final focusMinutes = prefs.getInt(StorageKeys.timerFocusMinutes) ?? 25;
@@ -320,6 +392,7 @@ class _AppLoaderState extends State<AppLoader> {
       personalNotes = loadedPersonal;
       studyNotes = loadedStudy;
       reportHistory = loadedReports;
+      tasks = loadedTasks;
       timerStats = hydratedStats;
       isLoading = false;
     });
@@ -351,6 +424,16 @@ class _AppLoaderState extends State<AppLoader> {
     await prefs.setString(
       StorageKeys.reportHistory,
       jsonEncode(reports.map((e) => e.toMap()).toList()),
+    );
+    setState(() {});
+  }
+
+  Future<void> saveTasks(List<AppTask> newTasks) async {
+    tasks = newTasks;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      StorageKeys.tasks,
+      jsonEncode(newTasks.map((e) => e.toMap()).toList()),
     );
     setState(() {});
   }
@@ -411,10 +494,12 @@ class _AppLoaderState extends State<AppLoader> {
       personalNotes: personalNotes,
       studyNotes: studyNotes,
       reportHistory: reportHistory,
+      tasks: tasks,
       timerStats: timerStats,
       onPersonalNotesChanged: savePersonalNotes,
       onStudyNotesChanged: saveStudyNotes,
       onReportHistoryChanged: saveReportHistory,
+      onTasksChanged: saveTasks,
       onTimerStatsChanged: saveTimerStats,
     );
   }
@@ -424,10 +509,12 @@ class MainShell extends StatefulWidget {
   final List<AppNote> personalNotes;
   final List<AppNote> studyNotes;
   final List<DailyReportEntry> reportHistory;
+  final List<AppTask> tasks;
   final TimerStats timerStats;
   final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
   final Future<void> Function(List<AppNote>) onStudyNotesChanged;
   final Future<void> Function(List<DailyReportEntry>) onReportHistoryChanged;
+  final Future<void> Function(List<AppTask>) onTasksChanged;
   final Future<void> Function(TimerStats) onTimerStatsChanged;
 
   const MainShell({
@@ -435,10 +522,12 @@ class MainShell extends StatefulWidget {
     required this.personalNotes,
     required this.studyNotes,
     required this.reportHistory,
+    required this.tasks,
     required this.timerStats,
     required this.onPersonalNotesChanged,
     required this.onStudyNotesChanged,
     required this.onReportHistoryChanged,
+    required this.onTasksChanged,
     required this.onTimerStatsChanged,
   });
 
@@ -454,6 +543,9 @@ class _MainShellState extends State<MainShell> {
     final latestReport =
         widget.reportHistory.isNotEmpty ? widget.reportHistory.first : null;
 
+    final todayTasks = tasksForToday(widget.tasks);
+    final completedTodayTasks = todayTasks.where((e) => e.isDone).length;
+
     final pages = [
       TimerScreen(
         initialStats: widget.timerStats,
@@ -465,6 +557,7 @@ class _MainShellState extends State<MainShell> {
       StatsPage(
         reportHistory: widget.reportHistory,
         timerStats: widget.timerStats,
+        tasks: widget.tasks,
       ),
       HomeScreen(
         personalNotes: widget.personalNotes,
@@ -472,14 +565,17 @@ class _MainShellState extends State<MainShell> {
         latestReport: latestReport,
         timerStats: widget.timerStats,
         reportHistory: widget.reportHistory,
+        tasks: widget.tasks,
         onPersonalNotesChanged: widget.onPersonalNotesChanged,
         onStudyNotesChanged: widget.onStudyNotesChanged,
         onReportHistoryChanged: widget.onReportHistoryChanged,
+        onTasksChanged: widget.onTasksChanged,
         onTimerStatsChanged: widget.onTimerStatsChanged,
       ),
       DailyReportScreen(
         reportHistory: widget.reportHistory,
         timerStats: widget.timerStats,
+        completedTasksCount: completedTodayTasks,
         onSaveHistory: (reports) async {
           await widget.onReportHistoryChanged(reports);
           setState(() {});
@@ -712,9 +808,11 @@ class HomeScreen extends StatelessWidget {
   final DailyReportEntry? latestReport;
   final TimerStats timerStats;
   final List<DailyReportEntry> reportHistory;
+  final List<AppTask> tasks;
   final Future<void> Function(List<AppNote>) onPersonalNotesChanged;
   final Future<void> Function(List<AppNote>) onStudyNotesChanged;
   final Future<void> Function(List<DailyReportEntry>) onReportHistoryChanged;
+  final Future<void> Function(List<AppTask>) onTasksChanged;
   final Future<void> Function(TimerStats) onTimerStatsChanged;
 
   const HomeScreen({
@@ -724,9 +822,11 @@ class HomeScreen extends StatelessWidget {
     required this.latestReport,
     required this.timerStats,
     required this.reportHistory,
+    required this.tasks,
     required this.onPersonalNotesChanged,
     required this.onStudyNotesChanged,
     required this.onReportHistoryChanged,
+    required this.onTasksChanged,
     required this.onTimerStatsChanged,
   });
 
@@ -738,6 +838,9 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final todayRating = latestReport?.rating ?? 0;
     final todaySummary = latestReport?.summary ?? 'No summary yet.';
+    final todayTasks = tasksForToday(tasks);
+    final completedTodayTasks = todayTasks.where((e) => e.isDone).length;
+
     return AppPage(
       title: 'Home',
       actions: const [
@@ -776,7 +879,13 @@ class HomeScreen extends StatelessWidget {
                 title: 'Daily Tasks',
                 icon: Icons.check_circle_rounded,
                 color: AppColors.green,
-                onTap: () => open(context, const DailyTasksScreen()),
+                onTap: () => open(
+                  context,
+                  DailyTasksScreen(
+                    tasks: tasks,
+                    onTasksChanged: onTasksChanged,
+                  ),
+                ),
               ),
               HomeMinimalCard(
                 title: 'Motivation',
@@ -793,6 +902,7 @@ class HomeScreen extends StatelessWidget {
                   DailyReportScreen(
                     reportHistory: reportHistory,
                     timerStats: timerStats,
+                    completedTasksCount: completedTodayTasks,
                     onSaveHistory: onReportHistoryChanged,
                   ),
                 ),
@@ -846,6 +956,12 @@ class HomeScreen extends StatelessWidget {
                   icon: Icons.timer_rounded,
                   label: 'Total Study Time',
                   value: formatMinutes(timerStats.totalStudyMinutes),
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.check_circle_rounded,
+                  label: 'Tasks Completed',
+                  value: '$completedTodayTasks/${todayTasks.length}',
                 ),
                 const SizedBox(height: 12),
                 SummaryRow(
@@ -1068,23 +1184,286 @@ class MotivationScreen extends StatelessWidget {
   }
 }
 
-class DailyTasksScreen extends StatelessWidget {
-  const DailyTasksScreen({super.key});
+class DailyTasksScreen extends StatefulWidget {
+  final List<AppTask> tasks;
+  final Future<void> Function(List<AppTask>) onTasksChanged;
+
+  const DailyTasksScreen({
+    super.key,
+    required this.tasks,
+    required this.onTasksChanged,
+  });
+
+  @override
+  State<DailyTasksScreen> createState() => _DailyTasksScreenState();
+}
+
+class _DailyTasksScreenState extends State<DailyTasksScreen> {
+  late List<AppTask> tasks;
+
+  @override
+  void initState() {
+    super.initState();
+    tasks = List.from(widget.tasks);
+  }
+
+  Future<void> saveTasks(List<AppTask> updated) async {
+    tasks = updated;
+    await widget.onTasksChanged(updated);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> addTaskDialog() async {
+    final controller = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface2,
+          title: const Text(
+            'Add Task',
+            style: TextStyle(color: AppColors.text),
+          ),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: AppColors.text),
+            decoration: const InputDecoration(
+              hintText: 'Enter task title',
+              hintStyle: TextStyle(color: AppColors.muted),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == true && controller.text.trim().isNotEmpty) {
+      final updated = List<AppTask>.from(tasks);
+      updated.insert(
+        0,
+        AppTask(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: controller.text.trim(),
+          isDone: false,
+          date: todayLabel(),
+        ),
+      );
+      await saveTasks(updated);
+    }
+  }
+
+  Future<void> toggleTask(AppTask task) async {
+    final updated = tasks.map((e) {
+      if (e.id == task.id) {
+        return e.copyWith(isDone: !e.isDone);
+      }
+      return e;
+    }).toList();
+
+    await saveTasks(updated);
+  }
+
+  Future<void> deleteTask(String id) async {
+    final updated = tasks.where((e) => e.id != id).toList();
+    await saveTasks(updated);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final todayTasks = tasksForToday(tasks);
+    final completedCount = todayTasks.where((e) => e.isDone).length;
+    final totalCount = todayTasks.length;
+    final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
+
     return AppPage(
       title: 'Daily Tasks',
+      actions: [
+        IconButton(
+          onPressed: addTaskDialog,
+          icon: const Icon(Icons.add_rounded, color: Colors.white),
+        ),
+      ],
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        children: const [
-          ReminderEntryCard(title: 'Math Practice', value: 'Pending'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'Physics Chapter 2', value: 'Pending'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'English Essay', value: 'Done'),
-          SizedBox(height: 12),
-          ReminderEntryCard(title: 'History Revision', value: 'Done'),
+        children: [
+          if (todayTasks.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: premiumCardDecoration(),
+              child: const Text(
+                'No tasks for today. Add one from the + icon.',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            )
+          else
+            ...todayTasks.map((task) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: premiumCardDecoration(),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => toggleTask(task),
+                        child: Container(
+                          height: 28,
+                          width: 28,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: task.isDone
+                                ? AppColors.green
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: task.isDone
+                                  ? AppColors.green
+                                  : Colors.white54,
+                            ),
+                          ),
+                          child: task.isDone
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                )
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: TextStyle(
+                            color: AppColors.text,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            decoration: task.isDone
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: task.isDone
+                              ? AppColors.green.withOpacity(0.18)
+                              : AppColors.blue.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Text(
+                          task.isDone ? 'Done' : 'Pending',
+                          style: TextStyle(
+                            color: task.isDone
+                                ? AppColors.green
+                                : Colors.lightBlueAccent,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => deleteTask(task.id),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: Colors.white60,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: premiumCardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tasks Completed Today',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle_rounded,
+                      color: AppColors.green,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '$completedCount / $totalCount',
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${(progress * 100).round()}%',
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: LinearProgressIndicator(
+                    minHeight: 10,
+                    value: progress,
+                    backgroundColor: Colors.white12,
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(AppColors.green),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  totalCount == 0
+                      ? 'Add tasks to track your daily progress.'
+                      : 'You completed ${(progress * 100).round()}% of your tasks today.',
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 14,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1730,12 +2109,14 @@ class ProgressRingPainter extends CustomPainter {
 class DailyReportScreen extends StatefulWidget {
   final List<DailyReportEntry> reportHistory;
   final TimerStats timerStats;
+  final int completedTasksCount;
   final Future<void> Function(List<DailyReportEntry>) onSaveHistory;
 
   const DailyReportScreen({
     super.key,
     required this.reportHistory,
     required this.timerStats,
+    required this.completedTasksCount,
     required this.onSaveHistory,
   });
 
@@ -1772,7 +2153,7 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
       rating: rating,
       summary: summaryController.text.trim(),
       studyMinutes: widget.timerStats.totalStudyMinutes,
-      completedTasks: 4,
+      completedTasks: widget.completedTasksCount,
       focusSessions: widget.timerStats.completedFocusSessions,
     );
 
@@ -1850,6 +2231,24 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
                     color: AppColors.muted,
                     decoration: TextDecoration.none,
                   ),
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.timer_rounded,
+                  label: 'Study Time',
+                  value: formatMinutes(widget.timerStats.totalStudyMinutes),
+                ),
+                const SizedBox(height: 10),
+                SummaryRow(
+                  icon: Icons.check_circle_rounded,
+                  label: 'Completed Tasks',
+                  value: '${widget.completedTasksCount}',
+                ),
+                const SizedBox(height: 10),
+                SummaryRow(
+                  icon: Icons.repeat_rounded,
+                  label: 'Focus Sessions',
+                  value: '${widget.timerStats.completedFocusSessions}',
                 ),
                 const SizedBox(height: 14),
                 TextField(
@@ -1995,15 +2394,20 @@ class _DailyReportScreenState extends State<DailyReportScreen> {
 class StatsPage extends StatelessWidget {
   final List<DailyReportEntry> reportHistory;
   final TimerStats timerStats;
+  final List<AppTask> tasks;
 
   const StatsPage({
     super.key,
     required this.reportHistory,
     required this.timerStats,
+    required this.tasks,
   });
 
   @override
   Widget build(BuildContext context) {
+    final todayTasks = tasksForToday(tasks);
+    final completedTodayTasks = todayTasks.where((e) => e.isDone).length;
+
     return AppPage(
       title: 'Stats',
       child: ListView(
@@ -2035,6 +2439,12 @@ class StatsPage extends StatelessWidget {
                   icon: Icons.timer_rounded,
                   label: 'Total Study Time',
                   value: formatMinutes(timerStats.totalStudyMinutes),
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  icon: Icons.check_circle_rounded,
+                  label: 'Today Tasks Done',
+                  value: '$completedTodayTasks/${todayTasks.length}',
                 ),
                 const SizedBox(height: 12),
                 SummaryRow(
@@ -2496,65 +2906,6 @@ class NoteCard extends StatelessWidget {
   }
 }
 
-class ReminderEntryCard extends StatelessWidget {
-  final String title;
-  final String value;
-
-  const ReminderEntryCard({
-    super.key,
-    required this.title,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: premiumCardDecoration(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 2),
-            child: Icon(Icons.check_rounded, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class InfoBox extends StatelessWidget {
   final String title;
   final String value;
@@ -2763,4 +3114,9 @@ String formatMinutes(int totalMinutes) {
   final minutes = totalMinutes % 60;
   if (hours == 0) return '${minutes}m';
   return '${hours}h ${minutes}m';
+}
+
+List<AppTask> tasksForToday(List<AppTask> tasks) {
+  final today = todayLabel();
+  return tasks.where((e) => e.date == today).toList();
 }
